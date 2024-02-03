@@ -1,0 +1,17 @@
+{
+  "name" : "ra3-gaming-dep",
+  "version" : "1.0.0",
+  "dependencies" : [ {
+    "name" : "imgui",
+    "version>=" : "1.90#3"
+  }, {
+    "name" : "detours",
+    "version>=" : "4.0.1#8"
+  }, {
+    "name" : "fmt",
+    "version>=" : "10.2.1"
+  }, {
+    "name" : "spdlog",
+    "version>=" : "1.13.0"
+  } ]
+}
