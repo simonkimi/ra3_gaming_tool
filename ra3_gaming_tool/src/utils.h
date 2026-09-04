@@ -2,24 +2,24 @@
 #include <string>
 
 #ifndef HR
-#define HR(x)             \
-    {                     \
-        HRESULT hr = (x); \
-        if (FAILED(hr))   \
-        {                 \
-            DxTrace(hr);  \
-        }                 \
+#define HR(x)                                                                                                          \
+    {                                                                                                                  \
+        HRESULT hr = (x);                                                                                              \
+        if (FAILED(hr))                                                                                                \
+        {                                                                                                              \
+            DxTrace(hr);                                                                                               \
+        }                                                                                                              \
     }
 #endif
 
 #ifndef RELEASE_COM
-#define RELEASE_COM(x)    \
-    {                     \
-        if (x)            \
-        {                 \
-            x->Release(); \
-            x = nullptr;  \
-        }                 \
+#define RELEASE_COM(x)                                                                                                 \
+    {                                                                                                                  \
+        if (x)                                                                                                         \
+        {                                                                                                              \
+            x->Release();                                                                                              \
+            x = nullptr;                                                                                               \
+        }                                                                                                              \
     }
 #endif
 

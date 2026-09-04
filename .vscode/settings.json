@@ -7,4 +7,7 @@
   "cmake.environment": {},
   "C_Cpp.intelliSenseEngine": "default",
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.formatting": "clangFormat",
+  "C_Cpp.clang_format_style": "file",
+  "C_Cpp.vcFormat.indent.namespaceContents": false
 }

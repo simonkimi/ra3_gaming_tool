@@ -1,0 +1,13 @@
+BasedOnStyle: Microsoft
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+NamespaceIndentation: None
+PointerAlignment: Right
+ColumnLimit: 120
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+FixNamespaceComments: false
+InsertBraces: true
+SortIncludes: Never
+IncludeBlocks: Preserve
