@@ -39,7 +39,9 @@
 /.xmake
 /build
 /.idea
-/.vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/c_cpp_properties.json
 /cmake-build-debug*
 
 *.log

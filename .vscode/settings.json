@@ -1,0 +1,8 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "cmake.useVsDeveloperEnvironment": "always",
+  "cmake.cmakePath": "cmake",
+  "cmake.environment": {}
+}
