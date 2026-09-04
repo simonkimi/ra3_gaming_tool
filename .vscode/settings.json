@@ -4,5 +4,7 @@
   "cmake.sourceDirectory": "${workspaceFolder}",
   "cmake.useVsDeveloperEnvironment": "always",
   "cmake.cmakePath": "cmake",
-  "cmake.environment": {}
+  "cmake.environment": {},
+  "C_Cpp.intelliSenseEngine": "default",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
 }

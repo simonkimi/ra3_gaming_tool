@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "windows-msvc-x86",
-      "compilerPath": "cl.exe",
+      "compilerPath": "",
       "cStandard": "c17",
       "cppStandard": "c++23",
       "intelliSenseMode": "windows-msvc-x86",
@@ -15,7 +15,6 @@
       "includePath": [
         "${workspaceFolder}/ra3_gaming_tool/include",
         "${workspaceFolder}/win32_utils/include",
-        "${workspaceFolder}/ra3_gaming_tool/lib/imgui_backends",
         "${workspaceFolder}/build/vcpkg_installed/x86-windows/include"
       ]
     }
