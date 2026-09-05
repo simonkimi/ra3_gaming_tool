@@ -1,6 +1,7 @@
 #include <Windows.h>
 
 import overlay;
+import hub;
 
 namespace
 {
@@ -11,6 +12,13 @@ HANDLE overlay_thread_ = nullptr;
 DWORD WINAPI OverlayThread(LPVOID)
 {
     overlay::dx9::StartHook();
+
+    hub::ClientInfo info;
+    if (hub::DiscoverClient(info) && info.toggle_vk != 0)
+    {
+        overlay::input::SetToggleKey(info.toggle_vk);
+    }
+
     if (exit_event_ != nullptr)
     {
         WaitForSingleObject(exit_event_, INFINITE);

@@ -5,8 +5,10 @@ module;
 #include <winhttp.h>
 #include <webp/decode.h>
 #include <nlohmann/json.hpp>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -54,7 +56,15 @@ struct LookupResult
     ImagePixels image;
 };
 
+struct ClientInfo
+{
+    unsigned short port = 0;
+    unsigned toggle_vk = 0;
+};
+
 LookupResult LookupMap(std::string_view map_path);
+bool DiscoverClient(ClientInfo &out);
+unsigned AdvertisedToggleVk() noexcept;
 
 }
 
@@ -66,6 +76,160 @@ constexpr DWORD kPipeWaitMs = 1500;
 constexpr DWORD kPipeReadMs = 2000;
 constexpr int kHttpTimeoutMs = 15000;
 constexpr std::uint64_t kMaxImageBytes = 10ull * 1024ull * 1024ull;
+
+std::atomic<unsigned> advertised_toggle_vk_{0};
+
+std::string NormalizedKey(std::string_view text)
+{
+    std::string out;
+    out.reserve(text.size());
+    for (unsigned char c : text)
+    {
+        if (c == ' ' || c == '\t' || c == '_' || c == '-')
+        {
+            continue;
+        }
+        out.push_back(static_cast<char>(std::toupper(c)));
+    }
+    if (out.size() > 2 && out[0] == 'V' && out[1] == 'K')
+    {
+        out.erase(0, 2);
+    }
+    return out;
+}
+
+unsigned ParseVirtualKeyImpl(std::string_view text)
+{
+    const std::string key = NormalizedKey(text);
+    if (key.empty())
+    {
+        return 0;
+    }
+
+    if (key.size() > 2 && key[0] == '0' && key[1] == 'X')
+    {
+        char *end = nullptr;
+        const unsigned long value = std::strtoul(key.c_str() + 2, &end, 16);
+        if (end != nullptr && end != key.c_str() + 2 && *end == '\0' && value > 0 && value <= 0xFE)
+        {
+            return static_cast<unsigned>(value);
+        }
+        return 0;
+    }
+
+    bool digits = true;
+    for (char c : key)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(c)))
+        {
+            digits = false;
+            break;
+        }
+    }
+    if (digits)
+    {
+        const unsigned long value = std::strtoul(key.c_str(), nullptr, 10);
+        if (value > 0 && value <= 0xFE)
+        {
+            return static_cast<unsigned>(value);
+        }
+        return 0;
+    }
+
+    if (key.size() == 1)
+    {
+        const char c = key[0];
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+        {
+            return static_cast<unsigned>(c);
+        }
+        return 0;
+    }
+
+    if (key[0] == 'F' && key.size() >= 2 && key.size() <= 3)
+    {
+        int n = 0;
+        for (std::size_t i = 1; i < key.size(); ++i)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(key[i])))
+            {
+                n = 0;
+                break;
+            }
+            n = n * 10 + (key[i] - '0');
+        }
+        if (n >= 1 && n <= 24)
+        {
+            return static_cast<unsigned>(VK_F1 + n - 1);
+        }
+    }
+
+    if (key.size() == 7 && key.compare(0, 6, "NUMPAD") == 0 && key[6] >= '0' && key[6] <= '9')
+    {
+        return static_cast<unsigned>(VK_NUMPAD0 + (key[6] - '0'));
+    }
+
+    struct NamedKey
+    {
+        const char *name;
+        unsigned vk;
+    };
+    static constexpr NamedKey kNamed[] = {
+        {"INSERT", VK_INSERT},     {"INS", VK_INSERT},      {"DELETE", VK_DELETE}, {"DEL", VK_DELETE},
+        {"HOME", VK_HOME},         {"END", VK_END},         {"PRIOR", VK_PRIOR},   {"PAGEUP", VK_PRIOR},
+        {"PGUP", VK_PRIOR},        {"NEXT", VK_NEXT},       {"PAGEDOWN", VK_NEXT}, {"PGDN", VK_NEXT},
+        {"LEFT", VK_LEFT},         {"RIGHT", VK_RIGHT},     {"UP", VK_UP},         {"DOWN", VK_DOWN},
+        {"SPACE", VK_SPACE},       {"SPACEBAR", VK_SPACE},  {"TAB", VK_TAB},       {"ESCAPE", VK_ESCAPE},
+        {"ESC", VK_ESCAPE},        {"BACKSPACE", VK_BACK},  {"BACK", VK_BACK},     {"PAUSE", VK_PAUSE},
+        {"CAPITAL", VK_CAPITAL},   {"CAPS", VK_CAPITAL},    {"CAPSLOCK", VK_CAPITAL}, {"NUMLOCK", VK_NUMLOCK},
+        {"SCROLL", VK_SCROLL},     {"PRINT", VK_SNAPSHOT},  {"PRINTSCREEN", VK_SNAPSHOT}, {"SNAPSHOT", VK_SNAPSHOT},
+        {"MULTIPLY", VK_MULTIPLY}, {"ADD", VK_ADD},         {"SUBTRACT", VK_SUBTRACT}, {"DECIMAL", VK_DECIMAL},
+        {"DIVIDE", VK_DIVIDE},     {"RETURN", VK_RETURN},   {"ENTER", VK_RETURN},
+    };
+    for (const auto &item : kNamed)
+    {
+        if (key == item.name)
+        {
+            return item.vk;
+        }
+    }
+    return 0;
+}
+
+unsigned ParseVkJson(const nlohmann::json &value)
+{
+    if (value.is_number_integer())
+    {
+        const int n = value.get<int>();
+        if (n > 0 && n <= 0xFE)
+        {
+            return static_cast<unsigned>(n);
+        }
+        return 0;
+    }
+    if (value.is_string())
+    {
+        return ParseVirtualKeyImpl(value.get<std::string>());
+    }
+    return 0;
+}
+
+unsigned ParseToggleVk(const nlohmann::json &obj)
+{
+    if (obj.contains("toggleVk"))
+    {
+        const unsigned vk = ParseVkJson(obj["toggleVk"]);
+        if (vk != 0)
+        {
+            return vk;
+        }
+    }
+    if (obj.contains("toggleKey"))
+    {
+        return ParseVkJson(obj["toggleKey"]);
+    }
+    return 0;
+}
 
 struct WinHttpHandle
 {
@@ -200,8 +364,9 @@ std::string StripHtml(std::string_view html)
     return out;
 }
 
-bool DiscoverPort(unsigned short &port)
+bool DiscoverPort(unsigned short &port, unsigned &toggle_vk)
 {
+    toggle_vk = 0;
     WaitNamedPipeW(kPipeName, kPipeWaitMs);
 
     HANDLE pipe = CreateFileW(kPipeName, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
@@ -275,7 +440,18 @@ bool DiscoverPort(unsigned short &port)
         return false;
     }
     port = static_cast<unsigned short>(value);
+    toggle_vk = ParseToggleVk(parsed);
+    if (toggle_vk != 0)
+    {
+        advertised_toggle_vk_.store(toggle_vk, std::memory_order_release);
+    }
     return true;
+}
+
+bool DiscoverPort(unsigned short &port)
+{
+    unsigned toggle_vk = 0;
+    return DiscoverPort(port, toggle_vk);
 }
 
 bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_code, std::string &response)
@@ -610,4 +786,15 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
         CoUninitialize();
     }
     return result;
+}
+
+bool hub::DiscoverClient(ClientInfo &out)
+{
+    out = {};
+    return DiscoverPort(out.port, out.toggle_vk);
+}
+
+unsigned hub::AdvertisedToggleVk() noexcept
+{
+    return advertised_toggle_vk_.load(std::memory_order_acquire);
 }

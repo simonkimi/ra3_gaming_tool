@@ -14,6 +14,7 @@ export module overlay:dx9;
 import :input;
 import :ui;
 import :utils;
+import hub;
 
 export namespace overlay::dx9
 {
@@ -205,6 +206,13 @@ HRESULT APIENTRY HookEndScene(IDirect3DDevice9 *device)
         }
         if (imgui_ready_)
         {
+            const unsigned vk = hub::AdvertisedToggleVk();
+            static unsigned applied_vk = 0;
+            if (vk != 0 && vk != applied_vk)
+            {
+                overlay::input::SetToggleKey(vk);
+                applied_vk = vk;
+            }
             ImGui_ImplDX9_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();

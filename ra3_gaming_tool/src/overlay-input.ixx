@@ -5,6 +5,8 @@ module;
 #include <imgui_impl_win32.h>
 #include "imgui_wndproc.h"
 
+#include <atomic>
+
 export module overlay:input;
 
 import :ui;
@@ -14,6 +16,8 @@ export namespace overlay::input
 
 void HookWndProc(HWND hwnd);
 void UnhookWndProc();
+void SetToggleKey(unsigned vk);
+unsigned ToggleKey();
 
 }
 
@@ -24,6 +28,7 @@ namespace
 
 WNDPROC original_wnd_proc_ = nullptr;
 HWND hwnd_ = nullptr;
+std::atomic<unsigned> toggle_vk_{static_cast<unsigned>('I')};
 
 bool IsMouseMessage(UINT msg)
 {
@@ -37,7 +42,7 @@ bool IsKeyboardMessage(UINT msg)
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (msg == WM_KEYUP && wParam == VK_F7)
+    if (msg == WM_KEYUP && wParam == toggle_vk_.load(std::memory_order_acquire))
     {
         overlay::ui::ToggleDisplay();
         return 0;
@@ -90,6 +95,20 @@ void UnhookWndProc()
     SetWindowLongPtr(hwnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(original_wnd_proc_));
     original_wnd_proc_ = nullptr;
     hwnd_ = nullptr;
+}
+
+void SetToggleKey(unsigned vk)
+{
+    if (vk == 0 || vk > 0xFE)
+    {
+        return;
+    }
+    toggle_vk_.store(vk, std::memory_order_release);
+}
+
+unsigned ToggleKey()
+{
+    return toggle_vk_.load(std::memory_order_acquire);
 }
 
 }
