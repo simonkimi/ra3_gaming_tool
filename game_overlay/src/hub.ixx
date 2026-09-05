@@ -8,6 +8,7 @@ module;
 #include <atomic>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <string_view>
@@ -65,6 +66,7 @@ struct ClientInfo
 LookupResult LookupMap(std::string_view map_path);
 bool DiscoverClient(ClientInfo &out);
 unsigned AdvertisedToggleVk() noexcept;
+std::string VirtualKeyName(unsigned vk);
 
 }
 
@@ -797,4 +799,78 @@ bool hub::DiscoverClient(ClientInfo &out)
 unsigned hub::AdvertisedToggleVk() noexcept
 {
     return advertised_toggle_vk_.load(std::memory_order_acquire);
+}
+
+std::string hub::VirtualKeyName(unsigned vk)
+{
+    if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9'))
+    {
+        return std::string(1, static_cast<char>(vk));
+    }
+    if (vk >= VK_F1 && vk <= VK_F24)
+    {
+        return "F" + std::to_string(vk - VK_F1 + 1);
+    }
+    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9)
+    {
+        return "Numpad" + std::to_string(vk - VK_NUMPAD0);
+    }
+    switch (vk)
+    {
+    case VK_INSERT:
+        return "Insert";
+    case VK_DELETE:
+        return "Delete";
+    case VK_HOME:
+        return "Home";
+    case VK_END:
+        return "End";
+    case VK_PRIOR:
+        return "PageUp";
+    case VK_NEXT:
+        return "PageDown";
+    case VK_LEFT:
+        return "Left";
+    case VK_RIGHT:
+        return "Right";
+    case VK_UP:
+        return "Up";
+    case VK_DOWN:
+        return "Down";
+    case VK_SPACE:
+        return "Space";
+    case VK_TAB:
+        return "Tab";
+    case VK_ESCAPE:
+        return "Esc";
+    case VK_BACK:
+        return "Backspace";
+    case VK_PAUSE:
+        return "Pause";
+    case VK_CAPITAL:
+        return "CapsLock";
+    case VK_NUMLOCK:
+        return "NumLock";
+    case VK_SCROLL:
+        return "ScrollLock";
+    case VK_SNAPSHOT:
+        return "PrintScreen";
+    case VK_MULTIPLY:
+        return "Numpad*";
+    case VK_ADD:
+        return "Numpad+";
+    case VK_SUBTRACT:
+        return "Numpad-";
+    case VK_DECIMAL:
+        return "Numpad.";
+    case VK_DIVIDE:
+        return "Numpad/";
+    case VK_RETURN:
+        return "Enter";
+    default:
+        break;
+    }
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "0x%02X", vk);
+    return buf;
 }

@@ -15,7 +15,7 @@ module;
 #include <vector>
 
 #ifndef MAP_LOOKUP_DELAY_MS
-#define MAP_LOOKUP_DELAY_MS 0
+#define MAP_LOOKUP_DELAY_MS 1000
 #endif
 
 export module overlay:ui;
@@ -523,7 +523,7 @@ void DrawMapLookup()
 
     if (watched_path_.empty())
     {
-        DrawStatus("暂无地图");
+        DrawStatus("请进入一个在线游戏房间...");
         return;
     }
 
@@ -539,13 +539,13 @@ void DrawMapLookup()
         DrawStatus("等待查询…");
         return;
     case hub::LookupStatus::client_offline:
-        DrawStatus("客户端未启动");
+        DrawStatus("无法连接至Ra3战区中枢, 请保证Ra3战区中枢正在运行");
         return;
     case hub::LookupStatus::http_error:
         DrawStatus("查询失败");
         return;
     case hub::LookupStatus::not_found:
-        DrawStatus("未找到该地图");
+        DrawStatus("此地图未上传至Ra3战区中枢");
         return;
     case hub::LookupStatus::found:
         break;
@@ -600,7 +600,15 @@ void overlay::ui::DrawFrame(IDirect3DDevice9 *device)
     UpdateLookup();
     SyncShownResult(device);
 
-    ImGui::Begin("地图信息", &is_display_, ImGuiWindowFlags_NoCollapse);
+    unsigned vk = hub::AdvertisedToggleVk();
+    if (vk == 0)
+    {
+        vk = static_cast<unsigned>('I');
+    }
+    const std::string key = hub::VirtualKeyName(vk);
+    char title[96];
+    std::snprintf(title, sizeof(title), "Ra3战区中枢 (按%s显示/隐藏 控件)###map_info", key.c_str());
+    ImGui::Begin(title, &is_display_, ImGuiWindowFlags_NoCollapse);
     ImGui::SetWindowSize({760, 560}, ImGuiCond_Once);
     if (need_set_pos_ && window_pos_.x != 0.0f && window_pos_.y != 0.0f && window_size_.x != 0.0f &&
         window_size_.y != 0.0f)
