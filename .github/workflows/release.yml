@@ -58,33 +58,12 @@ jobs:
         run: cmake --preset windows-msvc-x86-release
 
       - name: Build
-        run: cmake --build --preset release --parallel
-
-      - name: Package
-        id: package
-        shell: pwsh
-        run: |
-          $exe = "build/release/hook_helper.exe"
-          $dll = "build/release/ra3_gaming_tool.dll"
-          if (-not (Test-Path $exe) -or -not (Test-Path $dll)) {
-            Get-ChildItem -Recurse build/release -Include *.exe,*.dll | Select-Object FullName
-            throw "Release artifacts not found"
-          }
-
-          $name = "ra3_gaming_tool-${{ github.ref_name }}-windows-x86"
-          $stage = Join-Path $env:RUNNER_TEMP $name
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item $exe $stage
-          Copy-Item $dll $stage
-
-          $zip = Join-Path $PWD "$name.zip"
-          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force
-          "asset=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        run: cmake --build --preset release --parallel --target ra3_gaming_tool
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.package.outputs.asset }}
+          files: build/release/ra3_gaming_tool.dll
           generate_release_notes: true
           fail_on_unmatched_files: true
           make_latest: true
