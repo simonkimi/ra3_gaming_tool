@@ -1,4 +1,14 @@
 cmake_minimum_required(VERSION 3.28)
+
+if (POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif ()
+set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
+if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif ()
+set(BUILD_SHARED_LIBS OFF)
+
 project(ra3_tool)
 
 set(CMAKE_CXX_STANDARD 23)
