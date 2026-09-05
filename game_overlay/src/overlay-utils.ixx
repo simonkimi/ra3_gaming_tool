@@ -2,8 +2,7 @@ module;
 
 #include <Windows.h>
 #include <comdef.h>
-#include <format>
-#include <string>
+#include <cstdio>
 #include <cstdlib>
 
 export module overlay:utils;
@@ -16,13 +15,6 @@ const wchar_t *SafeWStr(const wchar_t *s)
 }
 }
 
-export std::wstring GetHRResult(HRESULT hresult)
-{
-    _com_error error(hresult);
-    return std::format(L"D3D error,Message: \n{}\nDescription: \n{}\nSource: \n{}\n", SafeWStr(error.ErrorMessage()),
-                       SafeWStr(error.Description()), SafeWStr(error.Source()));
-}
-
 export void DxTrace(HRESULT hresult, bool use_msgbox = false)
 {
     if (!FAILED(hresult))
@@ -30,14 +22,17 @@ export void DxTrace(HRESULT hresult, bool use_msgbox = false)
         return;
     }
 
-    auto err_msg = GetHRResult(hresult);
+    _com_error error(hresult);
+    wchar_t buf[1024];
+    swprintf_s(buf, L"D3D error,Message: \n%s\nDescription: \n%s\nSource: \n%s\n", SafeWStr(error.ErrorMessage()),
+               SafeWStr(error.Description()), SafeWStr(error.Source()));
 
-    OutputDebugStringW(err_msg.c_str());
+    OutputDebugStringW(buf);
     if (!use_msgbox)
     {
         return;
     }
-    int id = MessageBoxW(nullptr, err_msg.c_str(), L"D3D error", MB_ICONERROR | MB_ABORTRETRYIGNORE);
+    int id = MessageBoxW(nullptr, buf, L"D3D error", MB_ICONERROR | MB_ABORTRETRYIGNORE);
     switch (id)
     {
     case IDRETRY:

@@ -2,14 +2,10 @@ module;
 
 #include <Windows.h>
 #include <tchar.h>
-#include <TlHelp32.h>
 #include <Psapi.h>
-#include <stdexcept>
-#include <format>
-#include <string>
-#include <string_view>
-#include <utility>
+#include <cstdio>
 #include <cstdint>
+#include <stdexcept>
 
 export module win32:process;
 
@@ -22,15 +18,21 @@ void CrtInjectDll(DWORD pid, LPCTSTR dll_path);
 
 void CrtFreeDll(DWORD pid, LPCTSTR dll_path);
 
-HWND GetProcessWindow();
-
-std::pair<long, long> GetWindowSize(HWND hwnd);
-
 HMODULE FindRemoteModuleHandle(HANDLE handle, LPCTSTR modulePath);
 
-DWORD FindProcessId(std::wstring_view exe_name);
-
 void CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_name);
+
+}
+
+namespace
+{
+
+[[noreturn]] void ThrowLastError(const char *api)
+{
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "%s failed, error code: %lu", api, ::GetLastError());
+    throw std::runtime_error(buf);
+}
 
 }
 
@@ -40,7 +42,7 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
 
     if (hProcess.Get() == nullptr)
     {
-        throw std::runtime_error(std::format("OpenProcess failed, error code: {}", ::GetLastError()));
+        ThrowLastError("OpenProcess");
     }
 
     if (FindRemoteModuleHandle(hProcess.Get(), dll_path) != nullptr)
@@ -53,26 +55,26 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
     VirtualAllocRaii dll_addr(hProcess.Get(), dll_size);
     if (dll_addr.IsInvalid())
     {
-        throw std::runtime_error(std::format("VirtualAllocEx failed, error code: {}", ::GetLastError()));
+        ThrowLastError("VirtualAllocEx");
     }
 
     if (!::WriteProcessMemory(hProcess.Get(), dll_addr.Get(), dll_path, dll_size, nullptr))
     {
-        throw std::runtime_error(std::format("WriteProcessMemory failed, error code: {}", ::GetLastError()));
+        ThrowLastError("WriteProcessMemory");
     }
 
     FARPROC load_lib_addr = ::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
 
     if (load_lib_addr == nullptr)
     {
-        throw std::runtime_error(std::format("GetProcAddress failed, error code: {}", ::GetLastError()));
+        ThrowLastError("GetProcAddress");
     }
 
     HandleRaii thread_handle(::CreateRemoteThread(hProcess.Get(), nullptr, 0, (LPTHREAD_START_ROUTINE)load_lib_addr,
                                                   dll_addr.Get(), 0, nullptr));
     if (thread_handle.IsInvalid())
     {
-        throw std::runtime_error(std::format("CreateRemoteThread failed, error code: {}", ::GetLastError()));
+        ThrowLastError("CreateRemoteThread");
     }
 
     WaitForSingleObject(thread_handle.Get(), INFINITE);
@@ -104,13 +106,13 @@ void win32::CrtFreeDll(DWORD pid, LPCTSTR dll_path)
     HandleRaii hProcess(::OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid));
     if (hProcess.Get() == nullptr)
     {
-        throw std::runtime_error(std::format("OpenProcess failed, error code: {}", ::GetLastError()));
+        ThrowLastError("OpenProcess");
     }
 
     HMODULE dll_handle = FindRemoteModuleHandle(hProcess.Get(), dll_path);
     if (dll_handle == nullptr)
     {
-        throw std::runtime_error(std::format("FindRemoteModuleHandle failed, error code: {}", ::GetLastError()));
+        ThrowLastError("FindRemoteModuleHandle");
     }
 
     FARPROC free_lib_addr = GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "FreeLibrary");
@@ -119,71 +121,10 @@ void win32::CrtFreeDll(DWORD pid, LPCTSTR dll_path)
 
     if (thread_handle.IsInvalid())
     {
-        throw std::runtime_error(std::format("CreateRemoteThread failed, error code: {}", ::GetLastError()));
+        ThrowLastError("CreateRemoteThread");
     }
 
     WaitForSingleObject(thread_handle.Get(), INFINITE);
-}
-
-namespace
-{
-
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
-{
-    DWORD lpdwProcessId;
-    GetWindowThreadProcessId(hwnd, &lpdwProcessId);
-    if (lpdwProcessId == GetCurrentProcessId())
-    {
-        HWND *pWnd = reinterpret_cast<HWND *>(lParam);
-        if (pWnd)
-        {
-            *pWnd = hwnd;
-        }
-        return FALSE;
-    }
-    return TRUE;
-}
-
-}
-
-HWND win32::GetProcessWindow()
-{
-    HWND h_wnd_ = nullptr;
-    EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&h_wnd_));
-    return h_wnd_;
-}
-
-std::pair<long, long> win32::GetWindowSize(HWND hwnd)
-{
-    RECT rect;
-    ::GetWindowRect(hwnd, &rect);
-    return std::make_pair(rect.right - rect.left, rect.bottom - rect.top);
-}
-
-DWORD win32::FindProcessId(std::wstring_view exe_name)
-{
-    HandleRaii snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
-    if (snapshot.IsInvalid())
-    {
-        throw std::runtime_error(std::format("CreateToolhelp32Snapshot failed, error code: {}", ::GetLastError()));
-    }
-
-    PROCESSENTRY32 entry = {};
-    entry.dwSize = sizeof(entry);
-    if (!Process32First(snapshot.Get(), &entry))
-    {
-        return 0;
-    }
-
-    do
-    {
-        if (_wcsicmp(entry.szExeFile, std::wstring(exe_name).c_str()) == 0)
-        {
-            return entry.th32ProcessID;
-        }
-    } while (Process32Next(snapshot.Get(), &entry));
-
-    return 0;
 }
 
 void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_name)
@@ -191,7 +132,7 @@ void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_nam
     HMODULE local_module = LoadLibraryEx(dll_path, nullptr, DONT_RESOLVE_DLL_REFERENCES);
     if (local_module == nullptr)
     {
-        throw std::runtime_error(std::format("LoadLibraryEx failed, error code: {}", ::GetLastError()));
+        ThrowLastError("LoadLibraryEx");
     }
 
     FARPROC local_fn = GetProcAddress(local_module, export_name);
@@ -199,14 +140,16 @@ void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_nam
     {
         const DWORD err = ::GetLastError();
         FreeLibrary(local_module);
-        throw std::runtime_error(std::format("GetProcAddress({}) failed, error code: {}", export_name, err));
+        char buf[256];
+        std::snprintf(buf, sizeof(buf), "GetProcAddress(%s) failed, error code: %lu", export_name, err);
+        throw std::runtime_error(buf);
     }
 
     HandleRaii hProcess(OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid));
     if (hProcess.Get() == nullptr)
     {
         FreeLibrary(local_module);
-        throw std::runtime_error(std::format("OpenProcess failed, error code: {}", ::GetLastError()));
+        ThrowLastError("OpenProcess");
     }
 
     HMODULE remote_module = FindRemoteModuleHandle(hProcess.Get(), dll_path);
@@ -224,7 +167,7 @@ void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_nam
     HandleRaii thread_handle(CreateRemoteThread(hProcess.Get(), nullptr, 0, remote_fn, nullptr, 0, nullptr));
     if (thread_handle.IsInvalid())
     {
-        throw std::runtime_error(std::format("CreateRemoteThread failed, error code: {}", ::GetLastError()));
+        ThrowLastError("CreateRemoteThread");
     }
 
     WaitForSingleObject(thread_handle.Get(), INFINITE);

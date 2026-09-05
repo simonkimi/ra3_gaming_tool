@@ -12,7 +12,7 @@
         "_UNICODE"
       ],
       "includePath": [
-        "${workspaceFolder}/build/debug/vcpkg_installed/x86-windows-static/include"
+        "${workspaceFolder}/build/debug/vcpkg_installed/x86-windows-static-md/include"
       ]
     }
   ]

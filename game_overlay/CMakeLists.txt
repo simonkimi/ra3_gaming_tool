@@ -35,8 +35,15 @@ if (NOT WebP_FOUND)
     )
     FetchContent_MakeAvailable(libwebp)
     set(BUILD_SHARED_LIBS "${_ra3_saved_shared_libs}")
-    if (NOT TARGET WebP::webp)
+    if (NOT TARGET WebP::webp AND TARGET webp)
         add_library(WebP::webp ALIAS webp)
+    endif ()
+    if (NOT TARGET WebP::webpdecoder)
+        if (TARGET webpdecoder)
+            add_library(WebP::webpdecoder ALIAS webpdecoder)
+        elseif (TARGET WebP::webp)
+            add_library(WebP::webpdecoder ALIAS WebP::webp)
+        endif ()
     endif ()
 endif ()
 
@@ -64,7 +71,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
         imgui::imgui
         nlohmann_json::nlohmann_json
-        WebP::webp
+        WebP::webpdecoder
         d3d9
         winhttp
         ole32

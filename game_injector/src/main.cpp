@@ -1,5 +1,6 @@
 #include <Windows.h>
-#include <iostream>
+#include <cstdio>
+#include <cwchar>
 #include <stdexcept>
 #include <string>
 
@@ -10,7 +11,7 @@ namespace
 
 void PrintUsage()
 {
-    std::wcerr << L"usage: game_injector.exe <inject|unload> <pid>\n";
+    fwprintf(stderr, L"usage: game_injector.exe <inject|unload> <pid>\n");
 }
 
 std::wstring DllPathNextToExe()
@@ -59,21 +60,21 @@ int wmain(int argc, wchar_t *argv[])
         if (pid == 0)
         {
             PrintUsage();
-            std::wcerr << L"invalid pid\n";
+            fwprintf(stderr, L"invalid pid\n");
             return 1;
         }
 
         const std::wstring dll_path = DllPathNextToExe();
         if (GetFileAttributesW(dll_path.c_str()) == INVALID_FILE_ATTRIBUTES)
         {
-            std::wcerr << L"dll not found: " << dll_path << L'\n';
+            fwprintf(stderr, L"dll not found: %s\n", dll_path.c_str());
             return 1;
         }
 
         if (command == L"inject")
         {
             win32::CrtInjectDll(pid, dll_path.c_str());
-            std::wcout << L"injected into pid " << pid << L'\n';
+            fwprintf(stdout, L"injected into pid %lu\n", pid);
             return 0;
         }
 
@@ -81,7 +82,7 @@ int wmain(int argc, wchar_t *argv[])
         {
             win32::CallRemoteExport(pid, dll_path.c_str(), "OverlayUnload");
             win32::CrtFreeDll(pid, dll_path.c_str());
-            std::wcout << L"unhooked and unloaded dll from pid " << pid << L'\n';
+            fwprintf(stdout, L"unhooked and unloaded dll from pid %lu\n", pid);
             return 0;
         }
 
@@ -90,7 +91,7 @@ int wmain(int argc, wchar_t *argv[])
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        fprintf(stderr, "%s\n", e.what());
         return 1;
     }
 }
