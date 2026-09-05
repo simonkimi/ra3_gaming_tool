@@ -159,11 +159,12 @@ void InitImgui(IDirect3DDevice9 *device)
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     io.IniFilename = nullptr;
-    if (io.Fonts->AddFontFromFileTTF(R"(c:\Windows\Fonts\msyh.ttc)", 18.0f, nullptr,
+    if (io.Fonts->AddFontFromFileTTF(R"(c:\Windows\Fonts\msyh.ttc)", 24.0f, nullptr,
                                      io.Fonts->GetGlyphRangesChineseFull()) == nullptr)
     {
         io.Fonts->AddFontDefault();
     }
+    ImGui::GetStyle().ScaleAllSizes(1.35f);
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX9_Init(device);
@@ -178,6 +179,7 @@ void ShutdownImgui()
         return;
     }
     overlay::input::UnhookWndProc();
+    overlay::ui::Shutdown();
     ImGui_ImplDX9_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
@@ -206,7 +208,7 @@ HRESULT APIENTRY HookEndScene(IDirect3DDevice9 *device)
             ImGui_ImplDX9_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
-            overlay::ui::DrawFrame();
+            overlay::ui::DrawFrame(device);
             ImGui::Render();
             ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
         }
@@ -219,6 +221,7 @@ HRESULT APIENTRY HookReset(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp)
     InHookGuard in_hook;
     if (!unhook_requested_.load(std::memory_order_acquire) && imgui_ready_)
     {
+        overlay::ui::OnDeviceLost();
         ImGui_ImplDX9_InvalidateDeviceObjects();
     }
 
@@ -226,6 +229,7 @@ HRESULT APIENTRY HookReset(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp)
     if (!unhook_requested_.load(std::memory_order_acquire) && imgui_ready_ && SUCCEEDED(hr))
     {
         ImGui_ImplDX9_CreateDeviceObjects();
+        overlay::ui::OnDeviceReset(device);
     }
     return hr;
 }

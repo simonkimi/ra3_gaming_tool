@@ -11,38 +11,10 @@ HANDLE overlay_thread_ = nullptr;
 DWORD WINAPI OverlayThread(LPVOID)
 {
     overlay::dx9::StartHook();
-
-    bool f8_down = false;
-    for (;;)
+    if (exit_event_ != nullptr)
     {
-        if (exit_event_ != nullptr)
-        {
-            const DWORD wait = WaitForSingleObject(exit_event_, 50);
-            if (wait != WAIT_TIMEOUT)
-            {
-                break;
-            }
-        }
-        else
-        {
-            Sleep(50);
-        }
-
-        const bool down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
-        if (down && !f8_down)
-        {
-            if (overlay::dx9::IsHooked())
-            {
-                overlay::dx9::EndHook();
-            }
-            else
-            {
-                overlay::dx9::StartHook();
-            }
-        }
-        f8_down = down;
+        WaitForSingleObject(exit_event_, INFINITE);
     }
-
     overlay::dx9::EndHook();
     return 0;
 }
