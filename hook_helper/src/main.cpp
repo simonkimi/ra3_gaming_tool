@@ -1,10 +1,12 @@
-#include "process_helper.h"
+#include <Windows.h>
 #include <atomic>
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
+
+import win32;
 
 namespace
 {

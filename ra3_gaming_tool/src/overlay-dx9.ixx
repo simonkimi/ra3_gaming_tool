@@ -1,8 +1,6 @@
-#include "pch.h"
-#include "imgui_dx9.h"
-#include "imgui_input.h"
-#include "imgui_ui.h"
-#include "utils.h"
+module;
+
+#include <Windows.h>
 #include <atomic>
 #include <d3d9.h>
 #include <wrl/client.h>
@@ -10,6 +8,21 @@
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx9.h>
 #include <detours/detours.h>
+
+export module overlay:dx9;
+
+import :input;
+import :ui;
+import :utils;
+
+export namespace overlay::dx9
+{
+
+void StartHook();
+void EndHook();
+bool IsHooked();
+
+}
 
 namespace overlay::dx9
 {

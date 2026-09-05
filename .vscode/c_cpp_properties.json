@@ -3,18 +3,21 @@
   "configurations": [
     {
       "name": "windows-msvc-x86",
-      "compilerPath": "",
       "cStandard": "c17",
       "cppStandard": "c++23",
       "intelliSenseMode": "windows-msvc-x86",
       "configurationProvider": "ms-vscode.cmake-tools",
+      "mergeConfigurations": true,
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "compilerArgs": [
+        "/ifcSearchDir${workspaceFolder}/build/ra3_gaming_tool/CMakeFiles/ra3_gaming_tool.dir",
+        "/ifcSearchDir${workspaceFolder}/build/win32_utils/CMakeFiles/win32_utils.dir"
+      ],
       "defines": [
         "UNICODE",
         "_UNICODE"
       ],
       "includePath": [
-        "${workspaceFolder}/ra3_gaming_tool/include",
-        "${workspaceFolder}/win32_utils/include",
         "${workspaceFolder}/build/vcpkg_installed/x86-windows/include"
       ]
     }

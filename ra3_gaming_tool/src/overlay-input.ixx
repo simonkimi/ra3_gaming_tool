@@ -1,10 +1,21 @@
-#include "pch.h"
-#include "imgui_input.h"
-#include "imgui_ui.h"
+module;
+
+#include <Windows.h>
 #include <imgui.h>
 #include <imgui_impl_win32.h>
+#include "imgui_wndproc.h"
 
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+export module overlay:input;
+
+import :ui;
+
+export namespace overlay::input
+{
+
+void HookWndProc(HWND hwnd);
+void UnhookWndProc();
+
+}
 
 namespace overlay::input
 {

@@ -1,10 +1,16 @@
 project(win32_utils)
 
-include_directories(include)
-file(GLOB_RECURSE SOURCES_FILE "include/*.h" "src/*.cpp")
+add_library(${PROJECT_NAME})
 
-add_library(${PROJECT_NAME} ${SOURCES_FILE})
+target_sources(${PROJECT_NAME}
+        PUBLIC
+        FILE_SET CXX_MODULES
+        BASE_DIRS src
+        FILES
+        src/win32.ixx
+        src/win32-raii.ixx
+        src/win32-process.ixx
+)
 
-target_precompile_headers("${PROJECT_NAME}" PRIVATE "include/pch.h")
-
-target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
+msvc_intellisense_ifc_dir(${PROJECT_NAME})

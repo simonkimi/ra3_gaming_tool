@@ -1,14 +1,41 @@
+module;
+
+#include <Windows.h>
+#include <tchar.h>
+#include <TlHelp32.h>
+#include <Psapi.h>
 #include <stdexcept>
 #include <format>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <cstdint>
-#include "process_helper.h"
-#include "raii.h"
-#include "Psapi.h"
+
+export module win32:process;
+
+import :raii;
+
+export namespace win32
+{
+
+void CrtInjectDll(DWORD pid, LPCTSTR dll_path);
+
+void CrtFreeDll(DWORD pid, LPCTSTR dll_path);
+
+HWND GetProcessWindow();
+
+std::pair<long, long> GetWindowSize(HWND hwnd);
+
+HMODULE FindRemoteModuleHandle(HANDLE handle, LPCTSTR modulePath);
+
+DWORD FindProcessId(std::wstring_view exe_name);
+
+void CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_name);
+
+}
 
 void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
 {
-    // 打开注入进程
     HandleRaii hProcess(OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid));
 
     if (hProcess.Get() == nullptr)
@@ -23,20 +50,17 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
 
     SIZE_T dll_size = (lstrlen(dll_path) + 1) * sizeof(TCHAR);
 
-    // 在注入进程中申请内存
     VirtualAllocRaii dll_addr(hProcess.Get(), dll_size);
     if (dll_addr.IsInvalid())
     {
         throw std::runtime_error(std::format("VirtualAllocEx failed, error code: {}", ::GetLastError()));
     }
 
-    // 注入dll文件名称
     if (!::WriteProcessMemory(hProcess.Get(), dll_addr.Get(), dll_path, dll_size, nullptr))
     {
         throw std::runtime_error(std::format("WriteProcessMemory failed, error code: {}", ::GetLastError()));
     }
 
-    // 获取LoadLibraryA函数地址
     FARPROC load_lib_addr = ::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
 
     if (load_lib_addr == nullptr)
@@ -44,7 +68,6 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
         throw std::runtime_error(std::format("GetProcAddress failed, error code: {}", ::GetLastError()));
     }
 
-    // 在注入进程中创建远程线程
     HandleRaii thread_handle(::CreateRemoteThread(hProcess.Get(), nullptr, 0, (LPTHREAD_START_ROUTINE)load_lib_addr,
                                                   dll_addr.Get(), 0, nullptr));
     if (thread_handle.IsInvalid())
@@ -102,6 +125,9 @@ void win32::CrtFreeDll(DWORD pid, LPCTSTR dll_path)
     WaitForSingleObject(thread_handle.Get(), INFINITE);
 }
 
+namespace
+{
+
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 {
     DWORD lpdwProcessId;
@@ -116,6 +142,8 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
         return FALSE;
     }
     return TRUE;
+}
+
 }
 
 HWND win32::GetProcessWindow()

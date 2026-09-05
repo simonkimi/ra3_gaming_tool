@@ -1,9 +1,19 @@
-#include "pch.h"
-#include "imgui_ui.h"
+module;
+
 #include <imgui.h>
 
-namespace overlay::ui
+export module overlay:ui;
+
+export namespace overlay::ui
 {
+
+void DrawFrame();
+void OnWindowResize();
+bool IsDisplay();
+void ToggleDisplay();
+
+}
+
 namespace
 {
 
@@ -14,7 +24,7 @@ bool need_set_pos_ = false;
 
 }
 
-void DrawFrame()
+void overlay::ui::DrawFrame()
 {
     if (!is_display_)
     {
@@ -22,7 +32,7 @@ void DrawFrame()
     }
 
     ImGui::Begin("Hello, world!", &is_display_);
-        ImGui::TextUnformatted("F7: show/hide  F8: hook/unhook");
+    ImGui::TextUnformatted("F7: show/hide  F8: hook/unhook");
     ImGui::SetWindowSize({500, 300}, ImGuiCond_Once);
     if (need_set_pos_ && window_pos_.x != 0.0f && window_pos_.y != 0.0f && window_size_.x != 0.0f &&
         window_size_.y != 0.0f)
@@ -39,19 +49,17 @@ void DrawFrame()
     ImGui::End();
 }
 
-void OnWindowResize()
+void overlay::ui::OnWindowResize()
 {
     need_set_pos_ = true;
 }
 
-bool IsDisplay()
+bool overlay::ui::IsDisplay()
 {
     return is_display_;
 }
 
-void ToggleDisplay()
+void overlay::ui::ToggleDisplay()
 {
     is_display_ = !is_display_;
-}
-
 }
