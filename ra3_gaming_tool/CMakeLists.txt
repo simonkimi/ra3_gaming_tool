@@ -16,6 +16,9 @@ target_sources(${PROJECT_NAME}
         src/overlay-ui.ixx
         src/overlay-input.ixx
         src/overlay-dx9.ixx
+        src/ra3.ixx
+        src/ra3-address.ixx
+        src/ra3-types.ixx
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
