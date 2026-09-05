@@ -10,6 +10,7 @@ module;
 export module win32:process;
 
 import :raii;
+import :mutex;
 
 export namespace win32
 {
@@ -38,6 +39,11 @@ namespace
 
 void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
 {
+    if (InjectionMutexPresent(pid))
+    {
+        throw std::runtime_error("当前进程已经注入过");
+    }
+
     HandleRaii hProcess(OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid));
 
     if (hProcess.Get() == nullptr)
@@ -78,6 +84,16 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
     }
 
     WaitForSingleObject(thread_handle.Get(), INFINITE);
+
+    DWORD exit_code = 0;
+    if (!GetExitCodeThread(thread_handle.Get(), &exit_code))
+    {
+        ThrowLastError("GetExitCodeThread");
+    }
+    if (exit_code == 0)
+    {
+        throw std::runtime_error("远程进程加载模块失败");
+    }
 }
 
 HMODULE win32::FindRemoteModuleHandle(HANDLE handle, LPCTSTR modulePath)

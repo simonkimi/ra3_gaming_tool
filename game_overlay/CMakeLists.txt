@@ -77,6 +77,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         ole32
         windowscodecs
         ${DETOURS_LIBRARY}
+        win32_utils
 )
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 

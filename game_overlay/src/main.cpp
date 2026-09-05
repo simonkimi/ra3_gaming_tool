@@ -1,11 +1,14 @@
 #include <Windows.h>
+#include <string>
 
 import overlay;
 import hub;
+import win32;
 
 namespace
 {
 
+HANDLE instance_mutex_ = nullptr;
 HANDLE exit_event_ = nullptr;
 HANDLE overlay_thread_ = nullptr;
 
@@ -60,10 +63,25 @@ BOOL WINAPI DllMain(HINSTANCE h_instance, DWORD fdw_reason, LPVOID lpv_reserved)
     switch (fdw_reason)
     {
     case DLL_PROCESS_ATTACH:
+    {
         DisableThreadLibraryCalls(h_instance);
+        const std::wstring mutex_name = win32::InjectionMutexName(GetCurrentProcessId());
+        SetLastError(ERROR_SUCCESS);
+        instance_mutex_ = CreateMutexW(nullptr, TRUE, mutex_name.c_str());
+        if (instance_mutex_ == nullptr)
+        {
+            return FALSE;
+        }
+        if (GetLastError() == ERROR_ALREADY_EXISTS)
+        {
+            CloseHandle(instance_mutex_);
+            instance_mutex_ = nullptr;
+            return FALSE;
+        }
         exit_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         overlay_thread_ = CreateThread(nullptr, 0, OverlayThread, nullptr, 0, nullptr);
         break;
+    }
     case DLL_PROCESS_DETACH:
         if (lpv_reserved != nullptr)
         {
@@ -74,6 +92,11 @@ BOOL WINAPI DllMain(HINSTANCE h_instance, DWORD fdw_reason, LPVOID lpv_reserved)
             SetEvent(exit_event_);
         }
         overlay::dx9::EndHook();
+        if (instance_mutex_ != nullptr)
+        {
+            CloseHandle(instance_mutex_);
+            instance_mutex_ = nullptr;
+        }
         break;
     default:
         break;

@@ -9,6 +9,7 @@ target_sources(${PROJECT_NAME}
         FILES
         src/win32.ixx
         src/win32-raii.ixx
+        src/win32-mutex.ixx
         src/win32-process.ixx
 )
 
