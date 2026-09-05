@@ -13,4 +13,3 @@ target_sources(${PROJECT_NAME}
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
-msvc_intellisense_ifc_dir(${PROJECT_NAME})

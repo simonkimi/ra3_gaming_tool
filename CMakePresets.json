@@ -18,7 +18,6 @@
         "value": "host=x64",
         "strategy": "external"
       },
-      "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": {
           "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
@@ -34,6 +33,7 @@
       "name": "windows-msvc-x86-debug",
       "displayName": "Windows MSVC x86 + vcpkg (Debug)",
       "inherits": "windows-msvc-x86",
+      "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -42,7 +42,7 @@
       "name": "windows-msvc-x86-release",
       "displayName": "Windows MSVC x86 + vcpkg (Release)",
       "inherits": "windows-msvc-x86",
-      "binaryDir": "${sourceDir}/build-release",
+      "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }

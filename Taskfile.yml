@@ -4,7 +4,7 @@ version: '3'
 
 vars:
   GREETING: Hello, world!
-  HOOK_HELPER: '{{.TASKFILE_DIR}}/build/hook_helper.exe'
+  HOOK_HELPER: '{{.TASKFILE_DIR}}/build/debug/hook_helper.exe'
 
 tasks:
   default:

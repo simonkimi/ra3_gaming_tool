@@ -27,7 +27,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         ${DETOURS_LIBRARY}
 )
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
-msvc_intellisense_ifc_dir(${PROJECT_NAME})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}

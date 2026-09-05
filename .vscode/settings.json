@@ -7,12 +7,6 @@
   "cmake.environment": {},
   "C_Cpp.intelliSenseEngine": "default",
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-  "C_Cpp.default.mergeConfigurations": true,
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
-  "C_Cpp.default.compilerArgs": [
-    "/ifcSearchDir${workspaceFolder}/build/ra3_gaming_tool/CMakeFiles/ra3_gaming_tool.dir",
-    "/ifcSearchDir${workspaceFolder}/build/win32_utils/CMakeFiles/win32_utils.dir"
-  ],
   "C_Cpp.formatting": "clangFormat",
   "C_Cpp.clang_format_style": "file",
   "C_Cpp.vcFormat.indent.namespaceContents": false
