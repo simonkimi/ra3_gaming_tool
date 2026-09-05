@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  USERNAME: ${{ github.repository_owner }}
+  FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+  VCPKG_BINARY_SOURCES: "clear;nuget,GitHubPackages,readwrite"
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Setup MSVC x86
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_x86
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Add GitHub Packages NuGet source
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $vcpkg = Join-Path $env:VCPKG_ROOT "vcpkg.exe"
+          $nuget = (& $vcpkg fetch nuget | Select-Object -Last 1).Trim()
+          if (-not (Test-Path $nuget)) {
+            throw "nuget.exe not found: $nuget"
+          }
+          & $nuget sources add `
+            -Name GitHubPackages `
+            -Source $env:FEED_URL `
+            -Username $env:USERNAME `
+            -Password $env:GITHUB_TOKEN `
+            -StorePasswordInClearText
+          & $nuget setapikey $env:GITHUB_TOKEN -Source $env:FEED_URL
+
+      - name: Configure
+        run: cmake --preset windows-msvc-x86-release
+
+      - name: Build
+        run: cmake --build --preset release --parallel
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $exe = "build/release/hook_helper.exe"
+          $dll = "build/release/ra3_gaming_tool.dll"
+          if (-not (Test-Path $exe) -or -not (Test-Path $dll)) {
+            Get-ChildItem -Recurse build/release -Include *.exe,*.dll | Select-Object FullName
+            throw "Release artifacts not found"
+          }
+
+          $name = "ra3_gaming_tool-${{ github.ref_name }}-windows-x86"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $exe $stage
+          Copy-Item $dll $stage
+
+          $zip = Join-Path $PWD "$name.zip"
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force
+          "asset=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.asset }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: true
