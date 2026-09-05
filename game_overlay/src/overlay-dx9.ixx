@@ -93,17 +93,11 @@ bool GetDx9VTable(void **v_table, size_t size)
     d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
     d3dpp.hDeviceWindow = hwnd;
     d3dpp.Windowed = TRUE;
+    d3dpp.BackBufferFormat = D3DFMT_UNKNOWN;
 
     Microsoft::WRL::ComPtr<IDirect3DDevice9> device;
-    HRESULT hresult = d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-                                        &d3dpp, device.GetAddressOf());
-    if (FAILED(hresult))
-    {
-        DxTrace(hresult);
-        d3dpp.Windowed = FALSE;
-        hresult = d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-                                    &d3dpp, device.GetAddressOf());
-    }
+    HRESULT hresult = d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF, hwnd,
+                                        D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, device.GetAddressOf());
     if (FAILED(hresult))
     {
         DxTrace(hresult, true);

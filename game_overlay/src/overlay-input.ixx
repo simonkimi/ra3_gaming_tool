@@ -40,6 +40,19 @@ bool IsKeyboardMessage(UINT msg)
     return msg >= WM_KEYFIRST && msg <= WM_KEYLAST;
 }
 
+bool IsSystemHotkeyMessage(UINT msg, WPARAM wParam)
+{
+    if (msg == WM_SYSCOMMAND)
+    {
+        return true;
+    }
+    if (msg != WM_SYSKEYDOWN && msg != WM_SYSKEYUP)
+    {
+        return false;
+    }
+    return wParam == VK_TAB || wParam == VK_ESCAPE || wParam == VK_SPACE;
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_KEYUP && wParam == toggle_vk_.load(std::memory_order_acquire))
@@ -53,10 +66,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         overlay::ui::OnWindowResize();
     }
 
-    const bool display = overlay::ui::IsDisplay();
-    if (display && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+    // Alt+Tab / Alt+Esc / Alt+Space must reach the game, or exclusive fullscreen cannot yield focus.
+    if (IsSystemHotkeyMessage(msg, wParam))
     {
-        return 0;
+        return CallWindowProc(original_wnd_proc_, hWnd, msg, wParam, lParam);
+    }
+
+    const bool display = overlay::ui::IsDisplay();
+    if (display)
+    {
+        ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
     }
 
     ImGuiIO &io = ImGui::GetIO();
@@ -64,7 +83,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     if (display)
     {
-        if ((IsMouseMessage(msg) && io.WantCaptureMouse) || (IsKeyboardMessage(msg) && io.WantCaptureKeyboard))
+        if (IsMouseMessage(msg) || (IsKeyboardMessage(msg) && io.WantTextInput))
         {
             return 0;
         }
