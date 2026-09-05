@@ -22,6 +22,7 @@ void DrawFrame()
     }
 
     ImGui::Begin("Hello, world!", &is_display_);
+        ImGui::TextUnformatted("F7: show/hide  F8: hook/unhook");
     ImGui::SetWindowSize({500, 300}, ImGuiCond_Once);
     if (need_set_pos_ && window_pos_.x != 0.0f && window_pos_.y != 0.0f && window_size_.x != 0.0f &&
         window_size_.y != 0.0f)

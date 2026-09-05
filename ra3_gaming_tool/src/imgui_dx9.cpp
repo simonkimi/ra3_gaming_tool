@@ -3,6 +3,7 @@
 #include "imgui_input.h"
 #include "imgui_ui.h"
 #include "utils.h"
+#include <atomic>
 #include <d3d9.h>
 #include <wrl/client.h>
 #include <imgui.h>
@@ -18,10 +19,51 @@ namespace
 using FuncEndScene = HRESULT(APIENTRY *)(IDirect3DDevice9 *device);
 using FuncReset = HRESULT(APIENTRY *)(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp);
 
+CRITICAL_SECTION cs_;
+bool cs_ready_ = false;
 bool hooked_ = false;
 bool imgui_ready_ = false;
+std::atomic<bool> unhook_requested_{false};
+std::atomic<long> in_hook_{0};
+FuncEndScene original_end_scene_ = nullptr;
+FuncReset original_reset_ = nullptr;
 FuncEndScene vfun_end_scene_ = nullptr;
 FuncReset vfun_reset_ = nullptr;
+
+void EnsureLock()
+{
+    if (cs_ready_)
+    {
+        return;
+    }
+    InitializeCriticalSection(&cs_);
+    cs_ready_ = true;
+}
+
+struct AutoLock
+{
+    AutoLock()
+    {
+        EnsureLock();
+        EnterCriticalSection(&cs_);
+    }
+    ~AutoLock()
+    {
+        LeaveCriticalSection(&cs_);
+    }
+};
+
+struct InHookGuard
+{
+    InHookGuard()
+    {
+        in_hook_.fetch_add(1, std::memory_order_acq_rel);
+    }
+    ~InHookGuard()
+    {
+        in_hook_.fetch_sub(1, std::memory_order_acq_rel);
+    }
+};
 
 bool GetDx9VTable(void **v_table, size_t size)
 {
@@ -56,6 +98,25 @@ bool GetDx9VTable(void **v_table, size_t size)
 
     memcpy(v_table, *reinterpret_cast<void ***>(device.Get()), size);
     return true;
+}
+
+bool CaptureOriginals()
+{
+    if (original_end_scene_ != nullptr && original_reset_ != nullptr)
+    {
+        return true;
+    }
+
+    void *v_table[119];
+    if (!GetDx9VTable(v_table, sizeof(v_table)))
+    {
+        OutputDebugStringW(L"GetDx9VTable failed");
+        return false;
+    }
+
+    original_end_scene_ = reinterpret_cast<FuncEndScene>(v_table[42]);
+    original_reset_ = reinterpret_cast<FuncReset>(v_table[16]);
+    return original_end_scene_ != nullptr && original_reset_ != nullptr;
 }
 
 void InitImgui(IDirect3DDevice9 *device)
@@ -110,34 +171,46 @@ void ShutdownImgui()
     imgui_ready_ = false;
 }
 
+void WaitForHooksIdle()
+{
+    for (int i = 0; i < 100 && in_hook_.load(std::memory_order_acquire) != 0; ++i)
+    {
+        Sleep(10);
+    }
+}
+
 HRESULT APIENTRY HookEndScene(IDirect3DDevice9 *device)
 {
-    if (!imgui_ready_)
+    InHookGuard in_hook;
+    if (!unhook_requested_.load(std::memory_order_acquire))
     {
-        InitImgui(device);
-    }
-
-    if (imgui_ready_)
-    {
-        ImGui_ImplDX9_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
-        overlay::ui::DrawFrame();
-        ImGui::Render();
-        ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+        if (!imgui_ready_)
+        {
+            InitImgui(device);
+        }
+        if (imgui_ready_)
+        {
+            ImGui_ImplDX9_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+            ImGui::NewFrame();
+            overlay::ui::DrawFrame();
+            ImGui::Render();
+            ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+        }
     }
     return vfun_end_scene_(device);
 }
 
 HRESULT APIENTRY HookReset(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp)
 {
-    if (imgui_ready_)
+    InHookGuard in_hook;
+    if (!unhook_requested_.load(std::memory_order_acquire) && imgui_ready_)
     {
         ImGui_ImplDX9_InvalidateDeviceObjects();
     }
 
     const HRESULT hr = vfun_reset_(device, pp);
-    if (imgui_ready_ && SUCCEEDED(hr))
+    if (!unhook_requested_.load(std::memory_order_acquire) && imgui_ready_ && SUCCEEDED(hr))
     {
         ImGui_ImplDX9_CreateDeviceObjects();
     }
@@ -148,20 +221,19 @@ HRESULT APIENTRY HookReset(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp)
 
 void StartHook()
 {
+    AutoLock lock;
     if (hooked_)
     {
         return;
     }
-
-    void *v_table[119];
-    if (!GetDx9VTable(v_table, sizeof(v_table)))
+    if (!CaptureOriginals())
     {
-        OutputDebugStringW(L"GetDx9VTable failed");
         return;
     }
 
-    vfun_end_scene_ = reinterpret_cast<FuncEndScene>(v_table[42]);
-    vfun_reset_ = reinterpret_cast<FuncReset>(v_table[16]);
+    vfun_end_scene_ = original_end_scene_;
+    vfun_reset_ = original_reset_;
+    unhook_requested_.store(false, std::memory_order_release);
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
@@ -170,16 +242,21 @@ void StartHook()
     if (DetourTransactionCommit() == NO_ERROR)
     {
         hooked_ = true;
+        OutputDebugStringW(L"overlay: hook attached");
     }
 }
 
 void EndHook()
 {
-    ShutdownImgui();
+    AutoLock lock;
     if (!hooked_)
     {
         return;
     }
+
+    unhook_requested_.store(true, std::memory_order_release);
+    WaitForHooksIdle();
+    ShutdownImgui();
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
@@ -188,7 +265,20 @@ void EndHook()
     if (DetourTransactionCommit() == NO_ERROR)
     {
         hooked_ = false;
+        vfun_end_scene_ = original_end_scene_;
+        vfun_reset_ = original_reset_;
+        OutputDebugStringW(L"overlay: hook detached");
     }
+    else
+    {
+        unhook_requested_.store(false, std::memory_order_release);
+    }
+}
+
+bool IsHooked()
+{
+    AutoLock lock;
+    return hooked_;
 }
 
 }

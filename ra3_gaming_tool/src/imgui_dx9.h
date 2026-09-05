@@ -5,5 +5,6 @@ namespace overlay::dx9
 
 void StartHook();
 void EndHook();
+bool IsHooked();
 
 }

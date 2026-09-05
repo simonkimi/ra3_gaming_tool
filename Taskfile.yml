@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  GREETING: Hello, world!
+  HOOK_HELPER: '{{.TASKFILE_DIR}}/build/hook_helper.exe'
+
+tasks:
+  default:
+    desc: Print a greeting message
+    cmds:
+      - echo "{{.GREETING}}"
+    silent: true
+
+  hook_helper:
+    desc: Inject overlay into RA3; optional pid via `task hook_helper -- <pid>`
+    interactive: true
+    cmds:
+      - '"{{.HOOK_HELPER}}" {{.CLI_ARGS}}'

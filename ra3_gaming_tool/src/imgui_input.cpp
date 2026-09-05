@@ -26,7 +26,7 @@ bool IsKeyboardMessage(UINT msg)
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (msg == WM_KEYUP && wParam == VK_INSERT)
+    if (msg == WM_KEYUP && wParam == VK_F7)
     {
         overlay::ui::ToggleDisplay();
         return 0;

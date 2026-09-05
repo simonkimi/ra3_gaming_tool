@@ -7,7 +7,7 @@ include_directories(include)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "include/*.h" "src/*.cpp" "src/*.h")
 
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+add_library(${PROJECT_NAME} SHARED ${SOURCES} exports.def)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${DETOURS_INCLUDE_DIRS}
@@ -18,3 +18,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         ${DETOURS_LIBRARY}
 )
 target_precompile_headers(${PROJECT_NAME} PRIVATE include/pch.h)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)

@@ -21,3 +21,4 @@ add_definitions("-DUNICODE" "-D_UNICODE")
 
 add_subdirectory(win32_utils)
 add_subdirectory(ra3_gaming_tool)
+add_subdirectory(hook_helper)
