@@ -4,7 +4,7 @@ version: '3'
 
 vars:
   GREETING: Hello, world!
-  HOOK_HELPER: '{{.TASKFILE_DIR}}/build/debug/hook_helper.exe'
+  GAME_INJECTOR: '{{.TASKFILE_DIR}}/build/debug/game_injector.exe'
 
 tasks:
   default:
@@ -13,8 +13,7 @@ tasks:
       - echo "{{.GREETING}}"
     silent: true
 
-  hook_helper:
-    desc: Inject overlay into RA3; optional pid via `task hook_helper -- <pid>`
-    interactive: true
+  game_injector:
+    desc: 'inject or unload overlay; usage: task game_injector -- inject|unload <pid>'
     cmds:
-      - '"{{.HOOK_HELPER}}" {{.CLI_ARGS}}'
+      - '"{{.GAME_INJECTOR}}" {{.CLI_ARGS}}'

@@ -58,12 +58,14 @@ jobs:
         run: cmake --preset windows-msvc-x86-release
 
       - name: Build
-        run: cmake --build --preset release --parallel --target ra3_gaming_tool
+        run: cmake --build --preset release --parallel --target game_overlay --target game_injector
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/release/ra3_gaming_tool.dll
+          files: |
+            build/release/game_overlay.dll
+            build/release/game_injector.exe
           generate_release_notes: true
           fail_on_unmatched_files: true
           make_latest: true

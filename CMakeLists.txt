@@ -32,7 +32,7 @@ add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/dxifcInlineFunctions->")
 add_definitions("-DUNICODE" "-D_UNICODE")
 
 add_subdirectory(win32_utils)
-add_subdirectory(ra3_gaming_tool)
-add_subdirectory(hook_helper)
+add_subdirectory(game_overlay)
+add_subdirectory(game_injector)
 
 msvc_ifc_search_dirs()

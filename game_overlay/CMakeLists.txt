@@ -1,4 +1,4 @@
-project(ra3_gaming_tool)
+project(game_overlay)
 
 find_package(imgui CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG QUIET)

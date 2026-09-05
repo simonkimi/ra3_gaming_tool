@@ -1,4 +1,4 @@
-project(hook_helper)
+project(game_injector)
 
 add_executable(${PROJECT_NAME} src/main.cpp)
 
