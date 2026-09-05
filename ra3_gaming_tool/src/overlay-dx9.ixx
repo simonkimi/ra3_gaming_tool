@@ -164,7 +164,7 @@ void InitImgui(IDirect3DDevice9 *device)
     {
         io.Fonts->AddFontDefault();
     }
-    ImGui::GetStyle().ScaleAllSizes(1.35f);
+    overlay::ui::ApplyStyle();
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX9_Init(device);

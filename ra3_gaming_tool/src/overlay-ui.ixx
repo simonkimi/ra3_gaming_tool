@@ -6,6 +6,7 @@ module;
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -26,6 +27,7 @@ export namespace overlay::ui
 {
 
 void DrawFrame(IDirect3DDevice9 *device);
+void ApplyStyle();
 void OnWindowResize();
 void OnDeviceLost();
 void OnDeviceReset(IDirect3DDevice9 *device);
@@ -40,6 +42,147 @@ namespace
 
 constexpr ULONGLONG kRetryOfflineMs = 10000;
 constexpr float kThumbnailMaxSide = 360.0f;
+constexpr ImVec4 kTextMuted = {0.55f, 0.58f, 0.62f, 1.0f};
+constexpr ImVec4 kTextTitle = {0.96f, 0.78f, 0.28f, 1.0f};
+constexpr ImU32 kChipBg = IM_COL32(232, 163, 23, 36);
+constexpr ImU32 kChipBorder = IM_COL32(232, 163, 23, 90);
+constexpr ImU32 kChipText = IM_COL32(255, 224, 150, 255);
+
+void ApplyModernStyle()
+{
+    ImGuiStyle &style = ImGui::GetStyle();
+    ImGui::StyleColorsDark(&style);
+
+    style.WindowRounding = 12.0f;
+    style.ChildRounding = 10.0f;
+    style.FrameRounding = 8.0f;
+    style.PopupRounding = 10.0f;
+    style.ScrollbarRounding = 12.0f;
+    style.GrabRounding = 8.0f;
+    style.TabRounding = 8.0f;
+    style.WindowPadding = ImVec2(18.0f, 16.0f);
+    style.FramePadding = ImVec2(12.0f, 8.0f);
+    style.ItemSpacing = ImVec2(12.0f, 10.0f);
+    style.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
+    style.CellPadding = ImVec2(10.0f, 8.0f);
+    style.ScrollbarSize = 14.0f;
+    style.WindowBorderSize = 1.0f;
+    style.ChildBorderSize = 0.0f;
+    style.FrameBorderSize = 0.0f;
+    style.WindowTitleAlign = ImVec2(0.02f, 0.5f);
+    style.WindowMinSize = ImVec2(400.0f, 280.0f);
+
+    ImVec4 *c = style.Colors;
+    c[ImGuiCol_Text] = ImVec4(0.92f, 0.93f, 0.94f, 1.00f);
+    c[ImGuiCol_TextDisabled] = kTextMuted;
+    c[ImGuiCol_WindowBg] = ImVec4(0.086f, 0.094f, 0.110f, 0.96f);
+    c[ImGuiCol_ChildBg] = ImVec4(0.118f, 0.129f, 0.149f, 0.45f);
+    c[ImGuiCol_PopupBg] = ImVec4(0.086f, 0.094f, 0.110f, 0.98f);
+    c[ImGuiCol_Border] = ImVec4(1.00f, 1.00f, 1.00f, 0.08f);
+    c[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    c[ImGuiCol_FrameBg] = ImVec4(0.145f, 0.157f, 0.180f, 1.00f);
+    c[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.20f, 0.24f, 1.00f);
+    c[ImGuiCol_FrameBgActive] = ImVec4(0.20f, 0.22f, 0.26f, 1.00f);
+    c[ImGuiCol_TitleBg] = ImVec4(0.055f, 0.060f, 0.072f, 1.00f);
+    c[ImGuiCol_TitleBgActive] = ImVec4(0.055f, 0.060f, 0.072f, 1.00f);
+    c[ImGuiCol_TitleBgCollapsed] = ImVec4(0.055f, 0.060f, 0.072f, 0.85f);
+    c[ImGuiCol_MenuBarBg] = ImVec4(0.086f, 0.094f, 0.110f, 1.00f);
+    c[ImGuiCol_ScrollbarBg] = ImVec4(0.086f, 0.094f, 0.110f, 0.35f);
+    c[ImGuiCol_ScrollbarGrab] = ImVec4(0.28f, 0.30f, 0.34f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.40f, 0.42f, 0.46f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.91f, 0.64f, 0.09f, 0.80f);
+    c[ImGuiCol_CheckMark] = kTextTitle;
+    c[ImGuiCol_SliderGrab] = kTextTitle;
+    c[ImGuiCol_SliderGrabActive] = ImVec4(1.00f, 0.82f, 0.32f, 1.00f);
+    c[ImGuiCol_Button] = ImVec4(0.18f, 0.20f, 0.24f, 1.00f);
+    c[ImGuiCol_ButtonHovered] = ImVec4(0.91f, 0.64f, 0.09f, 0.35f);
+    c[ImGuiCol_ButtonActive] = ImVec4(0.91f, 0.64f, 0.09f, 0.55f);
+    c[ImGuiCol_Header] = ImVec4(0.91f, 0.64f, 0.09f, 0.18f);
+    c[ImGuiCol_HeaderHovered] = ImVec4(0.91f, 0.64f, 0.09f, 0.32f);
+    c[ImGuiCol_HeaderActive] = ImVec4(0.91f, 0.64f, 0.09f, 0.45f);
+    c[ImGuiCol_Separator] = ImVec4(1.00f, 1.00f, 1.00f, 0.08f);
+    c[ImGuiCol_SeparatorHovered] = ImVec4(0.91f, 0.64f, 0.09f, 0.45f);
+    c[ImGuiCol_SeparatorActive] = ImVec4(0.91f, 0.64f, 0.09f, 0.70f);
+    c[ImGuiCol_ResizeGrip] = ImVec4(0.91f, 0.64f, 0.09f, 0.22f);
+    c[ImGuiCol_ResizeGripHovered] = ImVec4(0.91f, 0.64f, 0.09f, 0.50f);
+    c[ImGuiCol_ResizeGripActive] = ImVec4(0.91f, 0.64f, 0.09f, 0.80f);
+    c[ImGuiCol_Tab] = ImVec4(0.145f, 0.157f, 0.180f, 1.00f);
+    c[ImGuiCol_TabHovered] = ImVec4(0.91f, 0.64f, 0.09f, 0.35f);
+    c[ImGuiCol_TabSelected] = ImVec4(0.91f, 0.64f, 0.09f, 0.28f);
+    c[ImGuiCol_TableHeaderBg] = ImVec4(0.145f, 0.157f, 0.180f, 1.00f);
+    c[ImGuiCol_TableBorderStrong] = ImVec4(1.00f, 1.00f, 1.00f, 0.08f);
+    c[ImGuiCol_TableBorderLight] = ImVec4(1.00f, 1.00f, 1.00f, 0.04f);
+    c[ImGuiCol_TableRowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    c[ImGuiCol_TableRowBgAlt] = ImVec4(1.00f, 1.00f, 1.00f, 0.028f);
+}
+
+void DrawMuted(const char *text)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, kTextMuted);
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+}
+
+void DrawSectionLabel(const char *text)
+{
+    ImGui::Spacing();
+    DrawMuted(text);
+    ImGui::Separator();
+}
+
+void DrawStatus(const char *text)
+{
+    ImGui::Dummy(ImVec2(0.0f, 28.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, kTextMuted);
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+}
+
+void DrawChip(const char *text)
+{
+    const ImVec2 pad{12.0f, 5.0f};
+    const ImVec2 text_size = ImGui::CalcTextSize(text);
+    const ImVec2 size{text_size.x + pad.x * 2.0f, text_size.y + pad.y * 2.0f};
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList *draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), kChipBg, 12.0f);
+    draw->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), kChipBorder, 12.0f);
+    draw->AddText(ImVec2(pos.x + pad.x, pos.y + pad.y), kChipText, text);
+    ImGui::Dummy(size);
+}
+
+void DrawChips(const std::vector<std::string> &tags)
+{
+    if (tags.empty())
+    {
+        return;
+    }
+
+    const float wrap = ImGui::GetContentRegionAvail().x;
+    float line_x = 0.0f;
+    for (std::size_t i = 0; i < tags.size(); ++i)
+    {
+        const ImVec2 text_size = ImGui::CalcTextSize(tags[i].c_str());
+        const float chip_w = text_size.x + 24.0f;
+        if (line_x > 0.0f && line_x + chip_w > wrap)
+        {
+            line_x = 0.0f;
+        }
+        else if (line_x > 0.0f)
+        {
+            ImGui::SameLine();
+        }
+        DrawChip(tags[i].c_str());
+        line_x += chip_w + ImGui::GetStyle().ItemSpacing.x;
+    }
+}
+
+void DrawMetaLine(const char *label, const char *value)
+{
+    DrawMuted(label);
+    ImGui::SameLine(108.0f);
+    ImGui::TextUnformatted(value);
+}
 
 bool is_display_ = true;
 ImVec2 window_size_ = {0, 0};
@@ -326,7 +469,13 @@ void DrawThumbnail()
     const float scale = (std::max)(width, height) > kThumbnailMaxSide ? kThumbnailMaxSide / (std::max)(width, height)
                                                                        : 1.0f;
     const ImVec2 size{width * scale, height * scale};
-    ImGui::Image(ImTextureRef(reinterpret_cast<void *>(thumbnail_)), size);
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList *draw = ImGui::GetWindowDrawList();
+    const ImTextureRef tex(reinterpret_cast<void *>(thumbnail_));
+    draw->AddImageRounded(tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f),
+                          IM_COL32_WHITE, 10.0f);
+    draw->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), IM_COL32(255, 255, 255, 28), 10.0f);
+    ImGui::Dummy(size);
 }
 
 void DrawLocations()
@@ -336,13 +485,15 @@ void DrawLocations()
         return;
     }
 
+    DrawSectionLabel("出生点");
     constexpr ImGuiTableFlags flags =
-        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp |
+        ImGuiTableFlags_PadOuterX;
     if (!ImGui::BeginTable("map_locations", 4, flags))
     {
         return;
     }
-    ImGui::TableSetupColumn("位置", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+    ImGui::TableSetupColumn("位置", ImGuiTableColumnFlags_WidthFixed, 80.0f);
     ImGui::TableSetupColumn("玩家");
     ImGui::TableSetupColumn("阵营");
     ImGui::TableSetupColumn("队伍");
@@ -372,29 +523,29 @@ void DrawMapLookup()
 
     if (watched_path_.empty())
     {
-        ImGui::TextUnformatted("无地图路径");
+        DrawStatus("暂无地图");
         return;
     }
 
     if (loading || queried_path_ != watched_path_)
     {
-        ImGui::TextUnformatted(loading ? "查询中..." : "等待查询...");
+        DrawStatus(loading ? "正在查询地图…" : "等待查询…");
         return;
     }
 
     switch (shown_result_.status)
     {
     case hub::LookupStatus::idle:
-        ImGui::TextUnformatted("等待查询...");
+        DrawStatus("等待查询…");
         return;
     case hub::LookupStatus::client_offline:
-        ImGui::TextUnformatted("客户端未启动");
+        DrawStatus("客户端未启动");
         return;
     case hub::LookupStatus::http_error:
-        ImGui::Text("查询失败 (%d)", shown_result_.http_status);
+        DrawStatus("查询失败");
         return;
     case hub::LookupStatus::not_found:
-        ImGui::TextUnformatted("未找到该地图");
+        DrawStatus("未找到该地图");
         return;
     case hub::LookupStatus::found:
         break;
@@ -403,41 +554,40 @@ void DrawMapLookup()
     DrawThumbnail();
     if (thumbnail_ != nullptr)
     {
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, 18.0f);
     }
 
     ImGui::BeginGroup();
-    ImGui::TextWrapped("%s", shown_result_.display_name.empty() ? "(无名称)" : shown_result_.display_name.c_str());
-    ImGui::Text("上传者: %s", shown_result_.nick_name.empty() ? "-" : shown_result_.nick_name.c_str());
-    ImGui::Text("玩家数量: %d", shown_result_.player_count);
-    if (!shown_result_.tags.empty())
-    {
-        ImGui::TextUnformatted("标签:");
-        ImGui::SameLine();
-        std::string tags;
-        for (std::size_t i = 0; i < shown_result_.tags.size(); ++i)
-        {
-            if (i != 0)
-            {
-                tags += ", ";
-            }
-            tags += shown_result_.tags[i];
-        }
-        ImGui::TextUnformatted(tags.c_str());
-    }
+    ImGui::PushStyleColor(ImGuiCol_Text, kTextTitle);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(shown_result_.display_name.empty() ? "未命名地图" : shown_result_.display_name.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    DrawMetaLine("上传者", shown_result_.nick_name.empty() ? "-" : shown_result_.nick_name.c_str());
+    char players[32];
+    std::snprintf(players, sizeof(players), "%d 人", shown_result_.player_count);
+    DrawMetaLine("人数", players);
+    ImGui::Spacing();
+    DrawChips(shown_result_.tags);
     ImGui::EndGroup();
 
     if (!shown_result_.description.empty())
     {
-        ImGui::Spacing();
-        ImGui::TextUnformatted("描述");
+        DrawSectionLabel("简介");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.78f, 0.80f, 0.83f, 1.0f));
         ImGui::TextWrapped("%s", shown_result_.description.c_str());
+        ImGui::PopStyleColor();
     }
 
-    ImGui::Spacing();
     DrawLocations();
 }
 
+}
+
+void overlay::ui::ApplyStyle()
+{
+    ApplyModernStyle();
 }
 
 void overlay::ui::DrawFrame(IDirect3DDevice9 *device)
@@ -450,7 +600,7 @@ void overlay::ui::DrawFrame(IDirect3DDevice9 *device)
     UpdateLookup();
     SyncShownResult(device);
 
-    ImGui::Begin("地图信息", &is_display_);
+    ImGui::Begin("地图信息", &is_display_, ImGuiWindowFlags_NoCollapse);
     ImGui::SetWindowSize({760, 560}, ImGuiCond_Once);
     if (need_set_pos_ && window_pos_.x != 0.0f && window_pos_.y != 0.0f && window_size_.x != 0.0f &&
         window_size_.y != 0.0f)
