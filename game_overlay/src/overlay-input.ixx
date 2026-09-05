@@ -83,7 +83,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     if (display)
     {
-        if (IsMouseMessage(msg) || (IsKeyboardMessage(msg) && io.WantTextInput))
+        if ((IsMouseMessage(msg) && io.WantCaptureMouse) ||
+            (IsKeyboardMessage(msg) && io.WantTextInput))
         {
             return 0;
         }
