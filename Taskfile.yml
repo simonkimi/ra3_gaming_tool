@@ -5,6 +5,7 @@ version: '3'
 vars:
   GREETING: Hello, world!
   GAME_INJECTOR: '{{.TASKFILE_DIR}}/build/debug/game_injector.exe'
+  GAME_INJECTOR_PS1: '{{.TASKFILE_DIR}}/scripts/game_injector.ps1'
 
 tasks:
   default:
@@ -14,6 +15,22 @@ tasks:
     silent: true
 
   game_injector:
-    desc: 'inject or unload overlay; usage: task game_injector -- inject|unload <pid>'
+    desc: 'inject or unload overlay; usage: task game_injector -- inject|unload'
+    vars:
+      ACTION: '{{default .CLI_ARGS .ACTION}}'
     cmds:
-      - '"{{.GAME_INJECTOR}}" {{.CLI_ARGS}}'
+      - powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{.GAME_INJECTOR_PS1}}" -Action "{{.ACTION}}" -Exe "{{.GAME_INJECTOR}}"
+
+  inject:
+    desc: Inject overlay into ra3_1.12.game (auto PID)
+    cmds:
+      - task: game_injector
+        vars:
+          ACTION: inject
+
+  unload:
+    desc: Unload overlay from ra3_1.12.game (auto PID)
+    cmds:
+      - task: game_injector
+        vars:
+          ACTION: unload

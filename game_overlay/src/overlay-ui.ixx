@@ -42,7 +42,7 @@ namespace
 {
 
 constexpr ULONGLONG kRetryOfflineMs = 10000;
-constexpr float kThumbnailMaxSide = 360.0f;
+constexpr float kThumbnailMaxSide = 260.0f;
 constexpr ImVec4 kTextMuted = {0.55f, 0.58f, 0.62f, 1.0f};
 constexpr ImVec4 kTextTitle = {0.96f, 0.78f, 0.28f, 1.0f};
 constexpr ImU32 kChipBg = IM_COL32(232, 163, 23, 36);
@@ -122,13 +122,6 @@ void DrawMuted(const char *text)
     ImGui::PushStyleColor(ImGuiCol_Text, kTextMuted);
     ImGui::TextUnformatted(text);
     ImGui::PopStyleColor();
-}
-
-void DrawSectionLabel(const char *text)
-{
-    ImGui::Spacing();
-    DrawMuted(text);
-    ImGui::Separator();
 }
 
 void DrawStatus(const char *text)
@@ -512,14 +505,26 @@ void DrawThumbnail()
     ImGui::Dummy(size);
 }
 
+void DrawDescription()
+{
+    if (shown_result_.description.empty())
+    {
+        DrawMuted("暂无简介");
+        return;
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.78f, 0.80f, 0.83f, 1.0f));
+    ImGui::TextWrapped("%s", shown_result_.description.c_str());
+    ImGui::PopStyleColor();
+}
+
 void DrawLocations()
 {
     if (shown_result_.locations.empty())
     {
+        DrawMuted("暂无出生点信息");
         return;
     }
 
-    DrawSectionLabel("出生点");
     constexpr ImGuiTableFlags flags =
         ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp |
         ImGuiTableFlags_PadOuterX;
@@ -545,6 +550,30 @@ void DrawLocations()
         ImGui::TextUnformatted(TeamLabel(loc.team));
     }
     ImGui::EndTable();
+}
+
+void DrawDetailTabs()
+{
+    ImGui::Spacing();
+    if (!ImGui::BeginTabBar("map_detail_tabs"))
+    {
+        return;
+    }
+    if (ImGui::BeginTabItem("简介"))
+    {
+        ImGui::BeginChild("tab_desc");
+        DrawDescription();
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+    }
+    if (ImGui::BeginTabItem("出生点"))
+    {
+        ImGui::BeginChild("tab_locs");
+        DrawLocations();
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+    }
+    ImGui::EndTabBar();
 }
 
 void DrawMapLookup()
@@ -606,15 +635,7 @@ void DrawMapLookup()
     DrawChips(shown_result_.tags);
     ImGui::EndGroup();
 
-    if (!shown_result_.description.empty())
-    {
-        DrawSectionLabel("简介");
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.78f, 0.80f, 0.83f, 1.0f));
-        ImGui::TextWrapped("%s", shown_result_.description.c_str());
-        ImGui::PopStyleColor();
-    }
-
-    DrawLocations();
+    DrawDetailTabs();
 }
 
 }
@@ -643,7 +664,7 @@ void overlay::ui::DrawFrame(IDirect3DDevice9 *device)
     char title[96];
     std::snprintf(title, sizeof(title), "Ra3战区中枢 (按%s显示/隐藏 控件)###map_info", key.c_str());
     ImGui::Begin(title, &is_display_, ImGuiWindowFlags_NoCollapse);
-    ImGui::SetWindowSize({760, 560}, ImGuiCond_Once);
+    ImGui::SetWindowSize({760, 640}, ImGuiCond_Once);
     if (need_set_pos_ && window_pos_.x != 0.0f && window_pos_.y != 0.0f && window_size_.x != 0.0f &&
         window_size_.y != 0.0f)
     {
