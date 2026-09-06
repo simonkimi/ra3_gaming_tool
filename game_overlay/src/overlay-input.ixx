@@ -10,6 +10,7 @@ module;
 export module overlay:input;
 
 import :ui;
+import win32;
 
 export namespace overlay::input
 {
@@ -97,13 +98,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 void HookWndProc(HWND hwnd)
 {
-    if (original_wnd_proc_ != nullptr || hwnd == nullptr)
+    if (hwnd == nullptr)
     {
+        win32::DebugLog(L"input: HookWndProc hwnd is null");
+        return;
+    }
+    if (original_wnd_proc_ != nullptr)
+    {
+        win32::DebugLog(L"input: HookWndProc skipped, already hooked hwnd=%p", hwnd_);
         return;
     }
     hwnd_ = hwnd;
     original_wnd_proc_ =
         reinterpret_cast<WNDPROC>(SetWindowLongPtr(hwnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc)));
+    if (original_wnd_proc_ == nullptr)
+    {
+        win32::DebugLog(L"input: SetWindowLongPtr failed, error=%lu hwnd=%p", GetLastError(), hwnd_);
+        hwnd_ = nullptr;
+        return;
+    }
+    win32::DebugLog(L"input: wndproc hooked hwnd=%p original=%p", hwnd_, original_wnd_proc_);
 }
 
 void UnhookWndProc()
@@ -112,6 +126,7 @@ void UnhookWndProc()
     {
         return;
     }
+    win32::DebugLog(L"input: restoring wndproc hwnd=%p", hwnd_);
     SetWindowLongPtr(hwnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(original_wnd_proc_));
     original_wnd_proc_ = nullptr;
     hwnd_ = nullptr;
@@ -121,9 +136,11 @@ void SetToggleKey(unsigned vk)
 {
     if (vk == 0 || vk > 0xFE)
     {
+        win32::DebugLog(L"input: SetToggleKey ignored vk=0x%02X", vk);
         return;
     }
     toggle_vk_.store(vk, std::memory_order_release);
+    win32::DebugLog(L"input: toggle key set to 0x%02X", vk);
 }
 
 unsigned ToggleKey()

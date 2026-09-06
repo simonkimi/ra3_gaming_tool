@@ -11,6 +11,7 @@ export module win32:process;
 
 import :raii;
 import :mutex;
+import :log;
 
 export namespace win32
 {
@@ -32,6 +33,7 @@ namespace
 {
     char buf[256];
     std::snprintf(buf, sizeof(buf), "%s failed, error code: %lu", api, ::GetLastError());
+    win32::DebugLogUtf8("inject: %s", buf);
     throw std::runtime_error(buf);
 }
 
@@ -39,8 +41,10 @@ namespace
 
 void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
 {
+    win32::DebugLog(L"inject: CrtInjectDll pid=%lu path=%s", pid, dll_path);
     if (InjectionMutexPresent(pid))
     {
+        win32::DebugLog(L"inject: mutex already present for pid=%lu", pid);
         throw std::runtime_error("当前进程已经注入过");
     }
 
@@ -53,6 +57,7 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
 
     if (FindRemoteModuleHandle(hProcess.Get(), dll_path) != nullptr)
     {
+        win32::DebugLog(L"inject: module already loaded in pid=%lu", pid);
         throw std::runtime_error("当前模块已经被加载");
     }
 
@@ -92,8 +97,10 @@ void win32::CrtInjectDll(DWORD pid, LPCTSTR dll_path)
     }
     if (exit_code == 0)
     {
+        win32::DebugLog(L"inject: LoadLibraryW returned 0 for pid=%lu", pid);
         throw std::runtime_error("远程进程加载模块失败");
     }
+    win32::DebugLog(L"inject: loaded module handle=0x%lX pid=%lu", exit_code, pid);
 }
 
 HMODULE win32::FindRemoteModuleHandle(HANDLE handle, LPCTSTR modulePath)
@@ -119,6 +126,7 @@ HMODULE win32::FindRemoteModuleHandle(HANDLE handle, LPCTSTR modulePath)
 
 void win32::CrtFreeDll(DWORD pid, LPCTSTR dll_path)
 {
+    win32::DebugLog(L"inject: CrtFreeDll pid=%lu path=%s", pid, dll_path);
     HandleRaii hProcess(::OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid));
     if (hProcess.Get() == nullptr)
     {
@@ -128,6 +136,7 @@ void win32::CrtFreeDll(DWORD pid, LPCTSTR dll_path)
     HMODULE dll_handle = FindRemoteModuleHandle(hProcess.Get(), dll_path);
     if (dll_handle == nullptr)
     {
+        win32::DebugLog(L"inject: remote module not found for free, pid=%lu", pid);
         ThrowLastError("FindRemoteModuleHandle");
     }
 
@@ -141,10 +150,12 @@ void win32::CrtFreeDll(DWORD pid, LPCTSTR dll_path)
     }
 
     WaitForSingleObject(thread_handle.Get(), INFINITE);
+    win32::DebugLog(L"inject: FreeLibrary completed pid=%lu", pid);
 }
 
 void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_name)
 {
+    win32::DebugLogUtf8("inject: CallRemoteExport pid=%lu export=%s", pid, export_name);
     HMODULE local_module = LoadLibraryEx(dll_path, nullptr, DONT_RESOLVE_DLL_REFERENCES);
     if (local_module == nullptr)
     {
@@ -158,6 +169,7 @@ void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_nam
         FreeLibrary(local_module);
         char buf[256];
         std::snprintf(buf, sizeof(buf), "GetProcAddress(%s) failed, error code: %lu", export_name, err);
+        win32::DebugLogUtf8("inject: %s", buf);
         throw std::runtime_error(buf);
     }
 
@@ -172,6 +184,7 @@ void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_nam
     if (remote_module == nullptr)
     {
         FreeLibrary(local_module);
+        win32::DebugLog(L"inject: remote module not found for export, pid=%lu", pid);
         throw std::runtime_error("remote module not found");
     }
 
@@ -187,4 +200,5 @@ void win32::CallRemoteExport(DWORD pid, LPCTSTR dll_path, const char *export_nam
     }
 
     WaitForSingleObject(thread_handle.Get(), INFINITE);
+    win32::DebugLogUtf8("inject: CallRemoteExport done export=%s", export_name);
 }

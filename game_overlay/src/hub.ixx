@@ -17,6 +17,8 @@ module;
 
 export module hub;
 
+import win32;
+
 export namespace hub
 {
 
@@ -374,12 +376,14 @@ bool DiscoverPort(unsigned short &port, unsigned &toggle_vk)
     HANDLE pipe = CreateFileW(kPipeName, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
     if (pipe == INVALID_HANDLE_VALUE)
     {
+        win32::DebugLog(L"hub: open pipe failed, error=%lu", GetLastError());
         return false;
     }
 
     HANDLE event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (event == nullptr)
     {
+        win32::DebugLog(L"hub: CreateEventW failed, error=%lu", GetLastError());
         CloseHandle(pipe);
         return false;
     }
@@ -430,15 +434,18 @@ bool DiscoverPort(unsigned short &port, unsigned &toggle_vk)
     auto parsed = nlohmann::json::parse(json, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object())
     {
+        win32::DebugLogUtf8("hub: pipe json parse failed, bytes=%zu", json.size());
         return false;
     }
     if (parsed.value("app", "") != "ra3-battlezone-hub")
     {
+        win32::DebugLogUtf8("hub: unexpected pipe app=%s", parsed.value("app", "").c_str());
         return false;
     }
     const int value = parsed.value("port", 0);
     if (value <= 0 || value > 65535)
     {
+        win32::DebugLog(L"hub: invalid pipe port=%d", value);
         return false;
     }
     port = static_cast<unsigned short>(value);
@@ -447,6 +454,7 @@ bool DiscoverPort(unsigned short &port, unsigned &toggle_vk)
     {
         advertised_toggle_vk_.store(toggle_vk, std::memory_order_release);
     }
+    win32::DebugLog(L"hub: discovered port=%u toggle_vk=0x%02X", port, toggle_vk);
     return true;
 }
 
@@ -465,6 +473,7 @@ bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_co
                                       WINHTTP_NO_PROXY_BYPASS, 0));
     if (session.handle == nullptr)
     {
+        win32::DebugLog(L"hub: WinHttpOpen failed, error=%lu", GetLastError());
         return false;
     }
     WinHttpSetTimeouts(session.handle, 2000, 2000, kHttpTimeoutMs, kHttpTimeoutMs);
@@ -472,6 +481,7 @@ bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_co
     WinHttpHandle connect(WinHttpConnect(session.handle, L"127.0.0.1", port, 0));
     if (connect.handle == nullptr)
     {
+        win32::DebugLog(L"hub: WinHttpConnect failed, port=%u error=%lu", port, GetLastError());
         return false;
     }
 
@@ -479,6 +489,7 @@ bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_co
                                              WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
     if (request.handle == nullptr)
     {
+        win32::DebugLog(L"hub: WinHttpOpenRequest failed, error=%lu", GetLastError());
         return false;
     }
 
@@ -487,10 +498,12 @@ bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_co
                             reinterpret_cast<LPVOID>(const_cast<char *>(body.data())), static_cast<DWORD>(body.size()),
                             static_cast<DWORD>(body.size()), 0))
     {
+        win32::DebugLog(L"hub: WinHttpSendRequest failed, error=%lu", GetLastError());
         return false;
     }
     if (!WinHttpReceiveResponse(request.handle, nullptr))
     {
+        win32::DebugLog(L"hub: WinHttpReceiveResponse failed, error=%lu", GetLastError());
         return false;
     }
 
@@ -630,37 +643,49 @@ bool DecodeImage(std::string_view image_path, hub::ImagePixels &out)
         return false;
     }
 
+    const std::string path_str(image_path);
     const std::wstring wide = Utf8ToWide(image_path);
     if (wide.empty())
     {
+        win32::DebugLogUtf8("hub: image path utf8 conversion failed: %s", path_str.c_str());
         return false;
     }
 
+    bool ok = false;
     if (EndsWithIgnoreCase(image_path, ".png"))
     {
-        return DecodePngWic(wide, out);
+        ok = DecodePngWic(wide, out);
     }
-    if (EndsWithIgnoreCase(image_path, ".webp"))
+    else if (EndsWithIgnoreCase(image_path, ".webp"))
     {
         std::vector<std::uint8_t> bytes;
-        return ReadFileBytes(wide, bytes) && DecodeWebp(bytes, out);
+        ok = ReadFileBytes(wide, bytes) && DecodeWebp(bytes, out);
     }
-
-    std::vector<std::uint8_t> bytes;
-    if (!ReadFileBytes(wide, bytes) || bytes.size() < 12)
+    else
     {
+        std::vector<std::uint8_t> bytes;
+        if (!ReadFileBytes(wide, bytes) || bytes.size() < 12)
+        {
+            win32::DebugLogUtf8("hub: failed to read image: %s", path_str.c_str());
+            return false;
+        }
+        if (bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G')
+        {
+            ok = DecodePngWic(wide, out);
+        }
+        else if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' &&
+                 bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P')
+        {
+            ok = DecodeWebp(bytes, out);
+        }
+    }
+    if (!ok)
+    {
+        win32::DebugLogUtf8("hub: decode image failed: %s", path_str.c_str());
         return false;
     }
-    if (bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G')
-    {
-        return DecodePngWic(wide, out);
-    }
-    if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' &&
-        bytes[10] == 'B' && bytes[11] == 'P')
-    {
-        return DecodeWebp(bytes, out);
-    }
-    return false;
+    win32::DebugLog(L"hub: decoded image %dx%d", out.width, out.height);
+    return true;
 }
 
 void ParseLocations(const nlohmann::json &value, std::vector<hub::MapLocation> &out)
@@ -699,6 +724,7 @@ hub::LookupResult ParseLookupBody(const std::string &body)
     auto json = nlohmann::json::parse(body, nullptr, false);
     if (json.is_discarded() || !json.is_object())
     {
+        win32::DebugLog(L"hub: lookup body is not json object, bytes=%zu", body.size());
         result.status = hub::LookupStatus::http_error;
         return result;
     }
@@ -753,13 +779,16 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
     LookupResult result;
     if (map_path.empty())
     {
+        win32::DebugLog(L"hub: LookupMap empty path");
         result.status = LookupStatus::not_found;
         return result;
     }
 
+    win32::DebugLogUtf8("hub: LookupMap path=%s", std::string(map_path).c_str());
     unsigned short port = 0;
     if (!DiscoverPort(port))
     {
+        win32::DebugLog(L"hub: client offline");
         result.status = LookupStatus::client_offline;
         return result;
     }
@@ -771,10 +800,12 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
     std::string response;
     if (!HttpPostLookup(port, body, status_code, response))
     {
+        win32::DebugLog(L"hub: http request failed, port=%u", port);
         result.status = LookupStatus::client_offline;
         return result;
     }
     result.http_status = static_cast<int>(status_code);
+    win32::DebugLog(L"hub: lookup http status=%lu bytes=%zu", status_code, response.size());
     if (status_code != 200)
     {
         result.status = LookupStatus::http_error;
@@ -787,6 +818,8 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
     {
         CoUninitialize();
     }
+    win32::DebugLogUtf8("hub: lookup status=%d name=%s players=%d", static_cast<int>(result.status),
+                        result.display_name.c_str(), result.player_count);
     return result;
 }
 

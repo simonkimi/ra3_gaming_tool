@@ -9,6 +9,8 @@ module;
 
 export module ra3:address;
 
+import win32;
+
 export namespace ra3
 {
 
@@ -103,6 +105,10 @@ ra3::GameVersion ra3::GetVersion() noexcept
     GameVersion expected = GameVersion::unknown;
     if (game_version.compare_exchange_strong(expected, value, std::memory_order_acq_rel))
     {
+        if (value != GameVersion::unknown)
+        {
+            win32::DebugLogUtf8("ra3: detected game version %s", VersionName());
+        }
         return value;
     }
     return expected;

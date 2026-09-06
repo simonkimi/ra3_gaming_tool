@@ -15,6 +15,7 @@ import :input;
 import :ui;
 import :utils;
 import hub;
+import win32;
 
 export namespace overlay::dx9
 {
@@ -86,6 +87,7 @@ bool GetDx9VTable(void **v_table, size_t size)
     d3d.Attach(Direct3DCreate9(D3D_SDK_VERSION));
     if (!d3d)
     {
+        win32::DebugLog(L"dx9: Direct3DCreate9 failed");
         return false;
     }
 
@@ -118,13 +120,19 @@ bool CaptureOriginals()
     void *v_table[119];
     if (!GetDx9VTable(v_table, sizeof(v_table)))
     {
-        OutputDebugStringW(L"GetDx9VTable failed");
+        win32::DebugLog(L"dx9: GetDx9VTable failed");
         return false;
     }
 
     original_end_scene_ = reinterpret_cast<FuncEndScene>(v_table[42]);
     original_reset_ = reinterpret_cast<FuncReset>(v_table[16]);
-    return original_end_scene_ != nullptr && original_reset_ != nullptr;
+    if (original_end_scene_ == nullptr || original_reset_ == nullptr)
+    {
+        win32::DebugLog(L"dx9: vtable missing EndScene=%p Reset=%p", original_end_scene_, original_reset_);
+        return false;
+    }
+    win32::DebugLog(L"dx9: captured EndScene=%p Reset=%p", original_end_scene_, original_reset_);
+    return true;
 }
 
 void InitImgui(IDirect3DDevice9 *device)
@@ -132,6 +140,7 @@ void InitImgui(IDirect3DDevice9 *device)
     D3DDEVICE_CREATION_PARAMETERS params = {};
     if (FAILED(device->GetCreationParameters(&params)))
     {
+        win32::DebugLog(L"dx9: GetCreationParameters failed");
         return;
     }
 
@@ -148,6 +157,7 @@ void InitImgui(IDirect3DDevice9 *device)
     }
     if (hwnd == nullptr)
     {
+        win32::DebugLog(L"dx9: InitImgui hwnd is null");
         return;
     }
 
@@ -157,6 +167,7 @@ void InitImgui(IDirect3DDevice9 *device)
     if (io.Fonts->AddFontFromFileTTF(R"(c:\Windows\Fonts\msyh.ttc)", 24.0f, nullptr,
                                      io.Fonts->GetGlyphRangesChineseFull()) == nullptr)
     {
+        win32::DebugLog(L"dx9: msyh.ttc not loaded, using default font");
         io.Fonts->AddFontDefault();
     }
     overlay::ui::ApplyStyle();
@@ -165,6 +176,7 @@ void InitImgui(IDirect3DDevice9 *device)
     ImGui_ImplDX9_Init(device);
     overlay::input::HookWndProc(hwnd);
     imgui_ready_ = true;
+    win32::DebugLog(L"dx9: imgui ready, hwnd=%p device=%p", hwnd, device);
 }
 
 void ShutdownImgui()
@@ -173,6 +185,7 @@ void ShutdownImgui()
     {
         return;
     }
+    win32::DebugLog(L"dx9: shutting down imgui");
     overlay::input::UnhookWndProc();
     overlay::ui::Shutdown();
     ImGui_ImplDX9_Shutdown();
@@ -186,6 +199,11 @@ void WaitForHooksIdle()
     for (int i = 0; i < 100 && in_hook_.load(std::memory_order_acquire) != 0; ++i)
     {
         Sleep(10);
+    }
+    const long remaining = in_hook_.load(std::memory_order_acquire);
+    if (remaining != 0)
+    {
+        win32::DebugLog(L"dx9: still in hook after wait, in_hook=%ld", remaining);
     }
 }
 
@@ -204,6 +222,7 @@ HRESULT APIENTRY HookEndScene(IDirect3DDevice9 *device)
             static unsigned applied_vk = 0;
             if (vk != 0 && vk != applied_vk)
             {
+                win32::DebugLog(L"dx9: applying advertised toggle vk=0x%02X", vk);
                 overlay::input::SetToggleKey(vk);
                 applied_vk = vk;
             }
@@ -228,10 +247,12 @@ HRESULT APIENTRY HookReset(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp)
     }
 
     const HRESULT hr = vfun_reset_(device, pp);
+    win32::DebugLog(L"dx9: Reset hr=0x%08X", static_cast<unsigned>(hr));
     if (!unhook_requested_.load(std::memory_order_acquire) && imgui_ready_ && SUCCEEDED(hr))
     {
         ImGui_ImplDX9_CreateDeviceObjects();
         overlay::ui::OnDeviceReset(device);
+        win32::DebugLog(L"dx9: device objects recreated");
     }
     return hr;
 }
@@ -243,8 +264,10 @@ void StartHook()
     AutoLock lock;
     if (hooked_)
     {
+        win32::DebugLog(L"dx9: StartHook skipped, already hooked");
         return;
     }
+    win32::DebugLog(L"dx9: StartHook begin");
     if (!CaptureOriginals())
     {
         return;
@@ -258,10 +281,15 @@ void StartHook()
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID &)vfun_end_scene_, HookEndScene);
     DetourAttach(&(PVOID &)vfun_reset_, HookReset);
-    if (DetourTransactionCommit() == NO_ERROR)
+    const LONG err = DetourTransactionCommit();
+    if (err == NO_ERROR)
     {
         hooked_ = true;
-        OutputDebugStringW(L"overlay: hook attached");
+        win32::DebugLog(L"dx9: hook attached");
+    }
+    else
+    {
+        win32::DebugLog(L"dx9: DetourTransactionCommit attach failed, error=%ld", err);
     }
 }
 
@@ -270,9 +298,11 @@ void EndHook()
     AutoLock lock;
     if (!hooked_)
     {
+        win32::DebugLog(L"dx9: EndHook skipped, not hooked");
         return;
     }
 
+    win32::DebugLog(L"dx9: EndHook begin");
     unhook_requested_.store(true, std::memory_order_release);
     WaitForHooksIdle();
     ShutdownImgui();
@@ -281,16 +311,18 @@ void EndHook()
     DetourUpdateThread(GetCurrentThread());
     DetourDetach(&(PVOID &)vfun_end_scene_, HookEndScene);
     DetourDetach(&(PVOID &)vfun_reset_, HookReset);
-    if (DetourTransactionCommit() == NO_ERROR)
+    const LONG err = DetourTransactionCommit();
+    if (err == NO_ERROR)
     {
         hooked_ = false;
         vfun_end_scene_ = original_end_scene_;
         vfun_reset_ = original_reset_;
-        OutputDebugStringW(L"overlay: hook detached");
+        win32::DebugLog(L"dx9: hook detached");
     }
     else
     {
         unhook_requested_.store(false, std::memory_order_release);
+        win32::DebugLog(L"dx9: DetourTransactionCommit detach failed, error=%ld", err);
     }
 }
 

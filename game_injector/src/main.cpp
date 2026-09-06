@@ -65,14 +65,17 @@ int wmain(int argc, wchar_t *argv[])
         }
 
         const std::wstring dll_path = DllPathNextToExe();
+        win32::DebugLog(L"inject: dll path %s", dll_path.c_str());
         if (GetFileAttributesW(dll_path.c_str()) == INVALID_FILE_ATTRIBUTES)
         {
+            win32::DebugLog(L"inject: dll not found");
             fwprintf(stderr, L"dll not found: %s\n", dll_path.c_str());
             return 1;
         }
 
         if (command == L"inject")
         {
+            win32::DebugLog(L"inject: injecting pid=%lu", pid);
             win32::CrtInjectDll(pid, dll_path.c_str());
             fwprintf(stdout, L"injected into pid %lu\n", pid);
             return 0;
@@ -80,6 +83,7 @@ int wmain(int argc, wchar_t *argv[])
 
         if (command == L"unload")
         {
+            win32::DebugLog(L"inject: unloading pid=%lu", pid);
             win32::CallRemoteExport(pid, dll_path.c_str(), "OverlayUnload");
             win32::CrtFreeDll(pid, dll_path.c_str());
             fwprintf(stdout, L"unhooked and unloaded dll from pid %lu\n", pid);
@@ -91,6 +95,7 @@ int wmain(int argc, wchar_t *argv[])
     }
     catch (const std::exception &e)
     {
+        win32::DebugLogUtf8("inject: exception %s", e.what());
         fprintf(stderr, "%s\n", e.what());
         return 1;
     }

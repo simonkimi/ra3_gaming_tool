@@ -22,6 +22,7 @@ export module overlay:ui;
 
 import ra3;
 import hub;
+import win32;
 
 export namespace overlay::ui
 {
@@ -322,12 +323,14 @@ void UploadThumbnail(IDirect3DDevice9 *device)
     if (FAILED(device->CreateTexture(width, height, 1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &thumbnail_,
                                      nullptr)))
     {
+        win32::DebugLog(L"ui: CreateTexture failed %ux%u", width, height);
         return;
     }
 
     D3DLOCKED_RECT rect = {};
     if (FAILED(thumbnail_->LockRect(0, &rect, nullptr, D3DLOCK_DISCARD)))
     {
+        win32::DebugLog(L"ui: LockRect failed %ux%u", width, height);
         ReleaseThumbnail();
         return;
     }
@@ -345,6 +348,7 @@ void UploadThumbnail(IDirect3DDevice9 *device)
 void StartLookup(std::uint64_t id, std::string path)
 {
     workers_.fetch_add(1, std::memory_order_acq_rel);
+    win32::DebugLogUtf8("ui: lookup start id=%llu path=%s", static_cast<unsigned long long>(id), path.c_str());
     std::thread([id, path = std::move(path)]() mutable {
         hub::LookupResult result;
         try
@@ -353,8 +357,11 @@ void StartLookup(std::uint64_t id, std::string path)
         }
         catch (...)
         {
+            win32::DebugLog(L"ui: lookup threw, id=%llu", static_cast<unsigned long long>(id));
             result.status = hub::LookupStatus::http_error;
         }
+        win32::DebugLogUtf8("ui: lookup done id=%llu status=%d http=%d name=%s", static_cast<unsigned long long>(id),
+                            static_cast<int>(result.status), result.http_status, result.display_name.c_str());
         {
             std::lock_guard lock(lookup_mutex_);
             if (!shutting_down_.load(std::memory_order_acquire) &&
@@ -386,6 +393,7 @@ void UpdateLookup()
     const ULONGLONG now = GetTickCount64();
     if (path != watched_path_)
     {
+        win32::DebugLogUtf8("ui: map path changed: %s", path.empty() ? "(empty)" : path.c_str());
         watched_path_ = path;
         last_change_tick_ = now;
         queried_path_.clear();
@@ -645,16 +653,23 @@ void overlay::ui::OnDeviceReset(IDirect3DDevice9 *device)
 
 void overlay::ui::Shutdown()
 {
+    win32::DebugLog(L"ui: shutdown begin, workers=%d", workers_.load(std::memory_order_acquire));
     shutting_down_.store(true, std::memory_order_release);
     request_id_.fetch_add(1, std::memory_order_acq_rel);
     for (int i = 0; i < 2000 && workers_.load(std::memory_order_acquire) != 0; ++i)
     {
         Sleep(10);
     }
+    const int leftover = workers_.load(std::memory_order_acquire);
+    if (leftover != 0)
+    {
+        win32::DebugLog(L"ui: shutdown still waiting, workers=%d", leftover);
+    }
     ReleaseThumbnail();
     shown_result_ = {};
     pending_result_ = {};
     shutting_down_.store(false, std::memory_order_release);
+    win32::DebugLog(L"ui: shutdown done");
 }
 
 bool overlay::ui::IsDisplay()
@@ -665,4 +680,5 @@ bool overlay::ui::IsDisplay()
 void overlay::ui::ToggleDisplay()
 {
     is_display_ = !is_display_;
+    win32::DebugLog(L"ui: display %s", is_display_ ? L"on" : L"off");
 }

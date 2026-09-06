@@ -7,6 +7,8 @@ module;
 
 export module overlay:utils;
 
+import win32;
+
 namespace
 {
 const wchar_t *SafeWStr(const wchar_t *s)
@@ -24,10 +26,10 @@ export void DxTrace(HRESULT hresult, bool use_msgbox = false)
 
     _com_error error(hresult);
     wchar_t buf[1024];
-    swprintf_s(buf, L"D3D error,Message: \n%s\nDescription: \n%s\nSource: \n%s\n", SafeWStr(error.ErrorMessage()),
-               SafeWStr(error.Description()), SafeWStr(error.Source()));
-
-    OutputDebugStringW(buf);
+    swprintf_s(buf, L"dx9: HRESULT 0x%08X, Message: %s, Description: %s, Source: %s",
+               static_cast<unsigned>(hresult), SafeWStr(error.ErrorMessage()), SafeWStr(error.Description()),
+               SafeWStr(error.Source()));
+    win32::DebugLog(L"%s", buf);
     if (!use_msgbox)
     {
         return;
