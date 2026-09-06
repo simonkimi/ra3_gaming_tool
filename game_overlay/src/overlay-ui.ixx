@@ -224,20 +224,46 @@ std::string ToUtf8(std::wstring_view text)
     return out;
 }
 
-std::string ToUtf8(std::string_view text, UINT code_page)
+bool TryNarrowToUtf8(std::string_view text, UINT code_page, std::string &out)
 {
+    out.clear();
     if (text.empty())
     {
-        return {};
+        return true;
     }
-    int wide_size = MultiByteToWideChar(code_page, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    int wide_size = MultiByteToWideChar(code_page, MB_ERR_INVALID_CHARS, text.data(),
+                                        static_cast<int>(text.size()), nullptr, 0);
     if (wide_size <= 0)
     {
-        return std::string{text};
+        return false;
     }
     std::wstring wide(static_cast<std::size_t>(wide_size), L'\0');
-    MultiByteToWideChar(code_page, 0, text.data(), static_cast<int>(text.size()), wide.data(), wide_size);
-    return ToUtf8(wide);
+    if (MultiByteToWideChar(code_page, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
+                            wide.data(), wide_size) != wide_size)
+    {
+        return false;
+    }
+    out = ToUtf8(wide);
+    return true;
+}
+
+std::string MapPathToUtf8(std::string_view text)
+{
+    std::string out;
+    if (TryNarrowToUtf8(text, CP_UTF8, out))
+    {
+        return out;
+    }
+    if (TryNarrowToUtf8(text, CP_ACP, out))
+    {
+        return out;
+    }
+    constexpr UINT kGb18030 = 54936;
+    if (TryNarrowToUtf8(text, kGb18030, out))
+    {
+        return out;
+    }
+    return std::string{text};
 }
 
 const char *PlayerTypeLabel(std::string_view type)
@@ -387,7 +413,7 @@ void UpdateLookup()
     ra3::GameInfo *game_info = ra3::GameInfo::current();
     if (game_info != nullptr)
     {
-        path = ToUtf8(game_info->map_path.view(), CP_ACP);
+        path = MapPathToUtf8(game_info->map_path.view());
     }
 
     const ULONGLONG now = GetTickCount64();
