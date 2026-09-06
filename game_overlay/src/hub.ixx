@@ -10,6 +10,7 @@ module;
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cwchar>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -46,17 +47,41 @@ struct ImagePixels
     std::vector<std::uint8_t> bgra;
 };
 
+enum class CommentsStatus
+{
+    idle,
+    loaded,
+    failed,
+};
+
+struct MapComment
+{
+    int id = 0;
+    std::string nick_name;
+    std::string content;
+    std::string created_at;
+    bool is_collapsed = false;
+    int reply_to_id = 0;
+};
+
 struct LookupResult
 {
     LookupStatus status = LookupStatus::idle;
     int http_status = 0;
+    int map_id = 0;
     std::string display_name;
     std::string description;
     std::string nick_name;
     int player_count = 0;
+    bool has_rating = false;
+    float rating = 0.0f;
+    std::string difficulty;
+    std::string author_difficulty;
     std::vector<std::string> tags;
     std::vector<MapLocation> locations;
     ImagePixels image;
+    CommentsStatus comments_status = CommentsStatus::idle;
+    std::vector<MapComment> comments;
 };
 
 struct ClientInfo
@@ -464,7 +489,8 @@ bool DiscoverPort(unsigned short &port)
     return DiscoverPort(port, toggle_vk);
 }
 
-bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_code, std::string &response)
+bool HttpRequest(unsigned short port, const wchar_t *method, const wchar_t *path, std::string_view body,
+                 const wchar_t *headers, DWORD &status_code, std::string &response)
 {
     status_code = 0;
     response.clear();
@@ -485,7 +511,7 @@ bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_co
         return false;
     }
 
-    WinHttpHandle request(WinHttpOpenRequest(connect.handle, L"POST", L"/maps/lookup", nullptr, WINHTTP_NO_REFERER,
+    WinHttpHandle request(WinHttpOpenRequest(connect.handle, method, path, nullptr, WINHTTP_NO_REFERER,
                                              WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
     if (request.handle == nullptr)
     {
@@ -493,10 +519,20 @@ bool HttpPostLookup(unsigned short port, std::string_view body, DWORD &status_co
         return false;
     }
 
-    const wchar_t headers[] = L"Content-Type: application/json; charset=utf-8\r\n";
-    if (!WinHttpSendRequest(request.handle, headers, static_cast<DWORD>(-1),
-                            reinterpret_cast<LPVOID>(const_cast<char *>(body.data())), static_cast<DWORD>(body.size()),
-                            static_cast<DWORD>(body.size()), 0))
+    BOOL sent = FALSE;
+    if (body.empty())
+    {
+        sent = WinHttpSendRequest(request.handle, headers != nullptr ? headers : WINHTTP_NO_ADDITIONAL_HEADERS,
+                                  headers != nullptr ? static_cast<DWORD>(-1) : 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+    }
+    else
+    {
+        sent = WinHttpSendRequest(request.handle, headers != nullptr ? headers : WINHTTP_NO_ADDITIONAL_HEADERS,
+                                  headers != nullptr ? static_cast<DWORD>(-1) : 0,
+                                  reinterpret_cast<LPVOID>(const_cast<char *>(body.data())),
+                                  static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0);
+    }
+    if (!sent)
     {
         win32::DebugLog(L"hub: WinHttpSendRequest failed, error=%lu", GetLastError());
         return false;
@@ -742,6 +778,7 @@ hub::LookupResult ParseLookupBody(const std::string &body)
     }
 
     result.status = hub::LookupStatus::found;
+    result.map_id = info.value("id", 0);
     result.display_name = info.value("displayName", "");
     result.description = StripHtml(info.value("description", ""));
     if (info.contains("user") && info["user"].is_object())
@@ -749,6 +786,27 @@ hub::LookupResult ParseLookupBody(const std::string &body)
         result.nick_name = info["user"].value("nickName", "");
     }
     result.player_count = info.value("playerCount", 0);
+    if (info.contains("statistic") && info["statistic"].is_object())
+    {
+        const auto &stat = info["statistic"];
+        if (stat.contains("rating") && stat["rating"].is_number())
+        {
+            const float api_rating = stat["rating"].get<float>();
+            if (api_rating >= 1.0f && api_rating <= 10.0f)
+            {
+                result.rating = api_rating;
+                result.has_rating = true;
+            }
+        }
+        if (stat.contains("difficulty") && stat["difficulty"].is_string())
+        {
+            result.difficulty = stat["difficulty"].get<std::string>();
+        }
+        if (stat.contains("authorDifficulty") && stat["authorDifficulty"].is_string())
+        {
+            result.author_difficulty = stat["authorDifficulty"].get<std::string>();
+        }
+    }
     if (info.contains("tags") && info["tags"].is_array())
     {
         for (const auto &tag : info["tags"])
@@ -770,6 +828,78 @@ hub::LookupResult ParseLookupBody(const std::string &body)
         DecodeImage(image_path, result.image);
     }
     return result;
+}
+
+bool ParseCommentsBody(const std::string &body, std::vector<hub::MapComment> &out)
+{
+    out.clear();
+    auto json = nlohmann::json::parse(body, nullptr, false);
+    if (json.is_discarded() || !json.is_array())
+    {
+        win32::DebugLog(L"hub: comments body is not json array, bytes=%zu", body.size());
+        return false;
+    }
+    for (const auto &item : json)
+    {
+        if (!item.is_object())
+        {
+            continue;
+        }
+        hub::MapComment comment;
+        comment.id = item.value("id", 0);
+        if (item.contains("user") && item["user"].is_object())
+        {
+            comment.nick_name = item["user"].value("nickName", "");
+        }
+        comment.content = StripHtml(item.value("content", ""));
+        comment.created_at = item.value("createdAt", "");
+        comment.is_collapsed = item.value("isCollapsed", false);
+        if (item.contains("replyToId") && item["replyToId"].is_number_integer())
+        {
+            comment.reply_to_id = item["replyToId"].get<int>();
+        }
+        out.push_back(std::move(comment));
+    }
+    return true;
+}
+
+void LoadComments(unsigned short port, hub::LookupResult &result)
+{
+    if (result.map_id <= 0)
+    {
+        result.comments_status = hub::CommentsStatus::failed;
+        return;
+    }
+
+    wchar_t path[80];
+    std::swprintf(path, 80, L"/maps/%d/comments", result.map_id);
+
+    DWORD status_code = 0;
+    std::string response;
+    if (!HttpRequest(port, L"GET", path, {}, nullptr, status_code, response))
+    {
+        win32::DebugLog(L"hub: comments request failed, id=%d", result.map_id);
+        result.comments_status = hub::CommentsStatus::failed;
+        return;
+    }
+    win32::DebugLog(L"hub: comments http status=%lu bytes=%zu id=%d", status_code, response.size(), result.map_id);
+    bool parsed = false;
+    try
+    {
+        parsed = status_code == 200 && ParseCommentsBody(response, result.comments);
+    }
+    catch (...)
+    {
+        parsed = false;
+    }
+    if (!parsed)
+    {
+        result.comments.clear();
+        result.comments_status = hub::CommentsStatus::failed;
+        return;
+    }
+    result.comments_status = hub::CommentsStatus::loaded;
+    win32::DebugLog(L"hub: comments loaded count=%zu", result.comments.size());
 }
 
 }
@@ -795,10 +925,11 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
 
     nlohmann::json request = {{"path", map_path}};
     const std::string body = request.dump();
+    const wchar_t headers[] = L"Content-Type: application/json; charset=utf-8\r\n";
 
     DWORD status_code = 0;
     std::string response;
-    if (!HttpPostLookup(port, body, status_code, response))
+    if (!HttpRequest(port, L"POST", L"/maps/lookup", body, headers, status_code, response))
     {
         win32::DebugLog(L"hub: http request failed, port=%u", port);
         result.status = LookupStatus::client_offline;
@@ -817,6 +948,10 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
     if (com_hr == S_OK)
     {
         CoUninitialize();
+    }
+    if (result.status == LookupStatus::found)
+    {
+        LoadComments(port, result);
     }
     win32::DebugLogUtf8("hub: lookup status=%d name=%s players=%d", static_cast<int>(result.status),
                         result.display_name.c_str(), result.player_count);

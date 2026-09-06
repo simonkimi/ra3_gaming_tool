@@ -155,7 +155,54 @@ CreateFile(\\.\pipe\ra3-battlezone-hub)
 
 不要依赖桌面窗口被激活。不要轮询唤醒接口。
 
-## 6. 可选回退：探测 HTTP 端口
+## 6. 查询评论
+
+地图查询成功后，用 `info.id` 拉取该图评论。客户端会请求 `GET /v2/maps/{id}/comments`，并把 HTTP 状态码与 JSON 原样转给 overlay。
+
+```http
+GET http://127.0.0.1:{port}/maps/{id}/comments
+```
+
+例如 `GET /maps/1294/comments`。`id` 必须是正整数。
+
+建议超时：10–15 秒。
+
+### 6.1 成功 — 与远端评论接口相同
+
+远端返回什么，本地就回什么。通常是 `200` 加评论数组：
+
+```json
+[
+  {
+    "id": 1,
+    "user": {
+      "uid": "iYYV1WssR3",
+      "nickName": "塔防大佬来",
+      "publicContact": ""
+    },
+    "content": "很好玩",
+    "createdAt": "2024-01-01T00:00:00Z",
+    "isCollapsed": false,
+    "replyToId": null,
+    "rating": 5,
+    "difficulty": null
+  }
+]
+```
+
+没有评论时是空数组 `[]`。字段以服务端为准。
+
+### 6.2 错误
+
+| HTTP | Body | 含义 |
+|---|---|---|
+| `405` | `{"ok":false}` | 方法不是 GET |
+| `502` | `{"ok":false}` | 评论 API 网络失败 |
+| 其它 | 远端原文 | 远端非网络错误（如 404）会原样转发状态码和 body |
+
+无效路径（缺 id、id 为 0、非数字）不会命中本接口，返回 `404`。
+
+## 7. 可选回退：探测 HTTP 端口
 
 浏览器侧仍使用 `GET /ping`。C++ 在 pipe 不可用时也可依次请求：
 
@@ -173,7 +220,7 @@ GET http://127.0.0.1:40179/ping
 
 `app` 必须是 `ra3-battlezone-hub`。优先使用 named pipe，不必每次扫三个端口。
 
-## 7. Win32 端口发现示例
+## 8. Win32 端口发现示例
 
 ```cpp
 #include <windows.h>

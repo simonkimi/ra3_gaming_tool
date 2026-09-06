@@ -5,6 +5,7 @@ module;
 #include <imgui.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -12,6 +13,7 @@ module;
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #ifndef MAP_LOOKUP_DELAY_MS
@@ -318,6 +320,49 @@ const char *TeamLabel(std::string_view type)
     return "不限队伍";
 }
 
+const char *DifficultyLabel(std::string_view type)
+{
+    if (type == "wheelchair")
+    {
+        return "EZ";
+    }
+    if (type == "easy")
+    {
+        return "简单";
+    }
+    if (type == "medium")
+    {
+        return "适中";
+    }
+    if (type == "hard")
+    {
+        return "困难";
+    }
+    if (type == "hell")
+    {
+        return "地狱";
+    }
+    if (type == "notHuman")
+    {
+        return "能过？";
+    }
+    return nullptr;
+}
+
+void FormatStarRating(float api_rating, char *out, std::size_t out_size)
+{
+    const float stars = std::round(api_rating / 2.0f * 10.0f) / 10.0f;
+    const int tenths = static_cast<int>(std::lround(stars * 10.0f));
+    if (tenths % 10 == 0)
+    {
+        std::snprintf(out, out_size, "%d 星", tenths / 10);
+    }
+    else
+    {
+        std::snprintf(out, out_size, "%d.%d 星", tenths / 10, std::abs(tenths % 10));
+    }
+}
+
 void ReleaseThumbnail()
 {
     if (thumbnail_ != nullptr)
@@ -552,6 +597,124 @@ void DrawLocations()
     ImGui::EndTable();
 }
 
+std::string FormatCommentTime(std::string_view iso)
+{
+    if (iso.size() < 16)
+    {
+        return std::string(iso);
+    }
+    std::string out(iso.substr(0, 16));
+    if (out[10] == 'T')
+    {
+        out[10] = ' ';
+    }
+    return out;
+}
+
+void DrawCommentNode(const std::vector<hub::MapComment> &comments,
+                     const std::vector<std::vector<std::size_t>> &children, std::size_t index, int depth)
+{
+    const hub::MapComment &comment = comments[index];
+    ImGui::PushID(comment.id);
+    const float indent = static_cast<float>(depth) * 18.0f;
+    if (indent > 0.0f)
+    {
+        ImGui::Indent(indent);
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, kTextTitle);
+    ImGui::TextUnformatted(comment.nick_name.empty() ? "匿名" : comment.nick_name.c_str());
+    ImGui::PopStyleColor();
+    if (!comment.created_at.empty())
+    {
+        ImGui::SameLine(0.0f, 10.0f);
+        DrawMuted(FormatCommentTime(comment.created_at).c_str());
+    }
+
+    if (!comment.content.empty())
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, comment.is_collapsed ? kTextMuted : ImVec4(0.78f, 0.80f, 0.83f, 1.0f));
+        ImGui::TextWrapped("%s", comment.content.c_str());
+        ImGui::PopStyleColor();
+    }
+
+    if (depth < 8)
+    {
+        for (std::size_t child : children[index])
+        {
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            DrawCommentNode(comments, children, child, depth + 1);
+        }
+    }
+
+    if (indent > 0.0f)
+    {
+        ImGui::Unindent(indent);
+    }
+    ImGui::PopID();
+}
+
+void DrawComments()
+{
+    switch (shown_result_.comments_status)
+    {
+    case hub::CommentsStatus::idle:
+        DrawMuted("等待加载评论…");
+        return;
+    case hub::CommentsStatus::failed:
+        DrawMuted("评论加载失败");
+        return;
+    case hub::CommentsStatus::loaded:
+        break;
+    }
+
+    if (shown_result_.comments.empty())
+    {
+        DrawMuted("暂无评论");
+        return;
+    }
+
+    const std::vector<hub::MapComment> &comments = shown_result_.comments;
+    std::unordered_map<int, std::size_t> id_index;
+    id_index.reserve(comments.size());
+    for (std::size_t i = 0; i < comments.size(); ++i)
+    {
+        if (comments[i].id != 0)
+        {
+            id_index.emplace(comments[i].id, i);
+        }
+    }
+
+    std::vector<std::vector<std::size_t>> children(comments.size());
+    std::vector<std::size_t> roots;
+    roots.reserve(comments.size());
+    for (std::size_t i = 0; i < comments.size(); ++i)
+    {
+        const auto parent = id_index.find(comments[i].reply_to_id);
+        if (comments[i].reply_to_id != 0 && parent != id_index.end() && parent->second != i)
+        {
+            children[parent->second].push_back(i);
+        }
+        else
+        {
+            roots.push_back(i);
+        }
+    }
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 6.0f));
+    for (std::size_t i = 0; i < roots.size(); ++i)
+    {
+        if (i > 0)
+        {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+        }
+        DrawCommentNode(comments, children, roots[i], 0);
+    }
+    ImGui::PopStyleVar();
+}
+
 void DrawDetailTabs()
 {
     ImGui::Spacing();
@@ -570,6 +733,22 @@ void DrawDetailTabs()
     {
         ImGui::BeginChild("tab_locs");
         DrawLocations();
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+    }
+    char comments_tab[48];
+    if (shown_result_.comments_status == hub::CommentsStatus::loaded)
+    {
+        std::snprintf(comments_tab, sizeof(comments_tab), "评论 (%zu)###comments", shown_result_.comments.size());
+    }
+    else
+    {
+        std::snprintf(comments_tab, sizeof(comments_tab), "评论###comments");
+    }
+    if (ImGui::BeginTabItem(comments_tab))
+    {
+        ImGui::BeginChild("tab_comments");
+        DrawComments();
         ImGui::EndChild();
         ImGui::EndTabItem();
     }
@@ -631,8 +810,30 @@ void DrawMapLookup()
     char players[32];
     std::snprintf(players, sizeof(players), "%d 人", shown_result_.player_count);
     DrawMetaLine("人数", players);
+    if (shown_result_.has_rating)
+    {
+        char rating[32];
+        FormatStarRating(shown_result_.rating, rating, sizeof(rating));
+        DrawMetaLine("评分", rating);
+    }
+    else
+    {
+        DrawMetaLine("评分", "评分不足");
+    }
+    const char *difficulty = DifficultyLabel(shown_result_.difficulty);
+    DrawMetaLine("难度", difficulty != nullptr ? difficulty : "票数不足");
     ImGui::Spacing();
     DrawChips(shown_result_.tags);
+    if (const char *author_diff = DifficultyLabel(shown_result_.author_difficulty); author_diff != nullptr)
+    {
+        char badge[48];
+        std::snprintf(badge, sizeof(badge), "难度 · %s", author_diff);
+        if (!shown_result_.tags.empty())
+        {
+            ImGui::SameLine();
+        }
+        DrawChip(badge);
+    }
     ImGui::EndGroup();
 
     DrawDetailTabs();
