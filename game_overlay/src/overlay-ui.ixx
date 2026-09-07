@@ -897,11 +897,13 @@ void overlay::ui::DrawFrame(IDirect3DDevice9 *device)
     SyncShownResult(device);
 
     unsigned vk = hub::AdvertisedToggleVk();
+    unsigned mods = hub::AdvertisedToggleMods();
     if (vk == 0)
     {
         vk = static_cast<unsigned>('I');
+        mods = 0;
     }
-    const std::string key = hub::VirtualKeyName(vk);
+    const std::string key = hub::FormatToggleShortcut(vk, mods);
     char title[96];
     std::snprintf(title, sizeof(title), "Ra3战区中枢 (按%s显示/隐藏 控件)###map_info", key.c_str());
     ImGui::Begin(title, &is_display_, ImGuiWindowFlags_NoCollapse);

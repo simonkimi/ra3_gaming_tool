@@ -20,10 +20,11 @@ DWORD WINAPI OverlayThread(LPVOID)
     hub::ClientInfo info;
     if (hub::DiscoverClient(info))
     {
-        win32::DebugLog(L"overlay: hub client port=%u toggle_vk=0x%02X", info.port, info.toggle_vk);
+        win32::DebugLog(L"overlay: hub client port=%u toggle_vk=0x%02X toggle_mods=0x%02X", info.port,
+                        info.toggle_vk, info.toggle_mods);
         if (info.toggle_vk != 0)
         {
-            overlay::input::SetToggleKey(info.toggle_vk);
+            overlay::input::SetToggleKey(info.toggle_vk, info.toggle_mods);
         }
     }
     else

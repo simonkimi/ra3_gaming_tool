@@ -17,7 +17,7 @@ export namespace overlay::input
 
 void HookWndProc(HWND hwnd);
 void UnhookWndProc();
-void SetToggleKey(unsigned vk);
+void SetToggleKey(unsigned vk, unsigned mods = 0);
 unsigned ToggleKey();
 
 }
@@ -30,6 +30,7 @@ namespace
 WNDPROC original_wnd_proc_ = nullptr;
 HWND hwnd_ = nullptr;
 std::atomic<unsigned> toggle_vk_{static_cast<unsigned>('I')};
+std::atomic<unsigned> toggle_mods_{0};
 
 bool IsMouseMessage(UINT msg)
 {
@@ -54,14 +55,27 @@ bool IsSystemHotkeyMessage(UINT msg, WPARAM wParam)
     return wParam == VK_TAB || wParam == VK_ESCAPE || wParam == VK_SPACE;
 }
 
+bool KeyIsDown(int vk)
+{
+    return (GetKeyState(vk) & 0x8000) != 0;
+}
+
+bool ToggleHotkeyMatch(WPARAM wParam)
+{
+    if (wParam != toggle_vk_.load(std::memory_order_acquire))
+    {
+        return false;
+    }
+    const unsigned mods = toggle_mods_.load(std::memory_order_acquire);
+    const bool need_ctrl = (mods & MOD_CONTROL) != 0;
+    const bool need_shift = (mods & MOD_SHIFT) != 0;
+    const bool need_alt = (mods & MOD_ALT) != 0;
+    return KeyIsDown(VK_CONTROL) == need_ctrl && KeyIsDown(VK_SHIFT) == need_shift &&
+           KeyIsDown(VK_MENU) == need_alt;
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (msg == WM_KEYUP && wParam == toggle_vk_.load(std::memory_order_acquire))
-    {
-        overlay::ui::ToggleDisplay();
-        return 0;
-    }
-
     if (msg == WM_SIZE || msg == WM_DISPLAYCHANGE)
     {
         overlay::ui::OnWindowResize();
@@ -71,6 +85,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     if (IsSystemHotkeyMessage(msg, wParam))
     {
         return CallWindowProc(original_wnd_proc_, hWnd, msg, wParam, lParam);
+    }
+
+    if ((msg == WM_KEYUP || msg == WM_SYSKEYUP) && ToggleHotkeyMatch(wParam))
+    {
+        overlay::ui::ToggleDisplay();
+        return 0;
     }
 
     const bool display = overlay::ui::IsDisplay();
@@ -132,15 +152,16 @@ void UnhookWndProc()
     hwnd_ = nullptr;
 }
 
-void SetToggleKey(unsigned vk)
+void SetToggleKey(unsigned vk, unsigned mods)
 {
     if (vk == 0 || vk > 0xFE)
     {
-        win32::DebugLog(L"input: SetToggleKey ignored vk=0x%02X", vk);
+        win32::DebugLog(L"input: SetToggleKey ignored vk=0x%02X mods=0x%02X", vk, mods);
         return;
     }
     toggle_vk_.store(vk, std::memory_order_release);
-    win32::DebugLog(L"input: toggle key set to 0x%02X", vk);
+    toggle_mods_.store(mods & (MOD_ALT | MOD_CONTROL | MOD_SHIFT), std::memory_order_release);
+    win32::DebugLog(L"input: toggle key set to vk=0x%02X mods=0x%02X", vk, mods);
 }
 
 unsigned ToggleKey()

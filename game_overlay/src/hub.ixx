@@ -91,12 +91,15 @@ struct ClientInfo
 {
     unsigned short port = 0;
     unsigned toggle_vk = 0;
+    unsigned toggle_mods = 0;
 };
 
 LookupResult LookupMap(std::string_view map_path);
 bool DiscoverClient(ClientInfo &out);
 unsigned AdvertisedToggleVk() noexcept;
+unsigned AdvertisedToggleMods() noexcept;
 std::string VirtualKeyName(unsigned vk);
+std::string FormatToggleShortcut(unsigned vk, unsigned mods);
 
 }
 
@@ -110,14 +113,31 @@ constexpr int kHttpTimeoutMs = 15000;
 constexpr std::uint64_t kMaxImageBytes = 10ull * 1024ull * 1024ull;
 
 std::atomic<unsigned> advertised_toggle_vk_{0};
+std::atomic<unsigned> advertised_toggle_mods_{0};
+
+constexpr unsigned kModMask = MOD_ALT | MOD_CONTROL | MOD_SHIFT;
 
 std::string NormalizedKey(std::string_view text)
 {
-    std::string out;
-    out.reserve(text.size());
+    std::string stripped;
+    stripped.reserve(text.size());
     for (unsigned char c : text)
     {
-        if (c == ' ' || c == '\t' || c == '_' || c == '-')
+        if (c != ' ' && c != '\t')
+        {
+            stripped.push_back(static_cast<char>(c));
+        }
+    }
+    if (stripped == "-")
+    {
+        return stripped;
+    }
+
+    std::string out;
+    out.reserve(stripped.size());
+    for (unsigned char c : stripped)
+    {
+        if (c == '_' || c == '-')
         {
             continue;
         }
@@ -128,6 +148,35 @@ std::string NormalizedKey(std::string_view text)
         out.erase(0, 2);
     }
     return out;
+}
+
+unsigned OemVkFromChar(char c)
+{
+    switch (c)
+    {
+    case '-':
+        return VK_OEM_MINUS;
+    case '=':
+        return VK_OEM_PLUS;
+    case '[':
+        return VK_OEM_4;
+    case ']':
+        return VK_OEM_6;
+    case '\\':
+        return VK_OEM_5;
+    case ';':
+        return VK_OEM_1;
+    case '\'':
+        return VK_OEM_7;
+    case ',':
+        return VK_OEM_COMMA;
+    case '.':
+        return VK_OEM_PERIOD;
+    case '/':
+        return VK_OEM_2;
+    default:
+        return 0;
+    }
 }
 
 unsigned ParseVirtualKeyImpl(std::string_view text)
@@ -158,7 +207,7 @@ unsigned ParseVirtualKeyImpl(std::string_view text)
             break;
         }
     }
-    if (digits)
+    if (digits && key.size() > 1)
     {
         const unsigned long value = std::strtoul(key.c_str(), nullptr, 10);
         if (value > 0 && value <= 0xFE)
@@ -175,7 +224,7 @@ unsigned ParseVirtualKeyImpl(std::string_view text)
         {
             return static_cast<unsigned>(c);
         }
-        return 0;
+        return OemVkFromChar(c);
     }
 
     if (key[0] == 'F' && key.size() >= 2 && key.size() <= 3)
@@ -217,6 +266,13 @@ unsigned ParseVirtualKeyImpl(std::string_view text)
         {"SCROLL", VK_SCROLL},     {"PRINT", VK_SNAPSHOT},  {"PRINTSCREEN", VK_SNAPSHOT}, {"SNAPSHOT", VK_SNAPSHOT},
         {"MULTIPLY", VK_MULTIPLY}, {"ADD", VK_ADD},         {"SUBTRACT", VK_SUBTRACT}, {"DECIMAL", VK_DECIMAL},
         {"DIVIDE", VK_DIVIDE},     {"RETURN", VK_RETURN},   {"ENTER", VK_RETURN},
+        {"MINUS", VK_OEM_MINUS},   {"OEMMINUS", VK_OEM_MINUS}, {"EQUAL", VK_OEM_PLUS}, {"EQUALS", VK_OEM_PLUS},
+        {"OEMPLUS", VK_OEM_PLUS},  {"COMMA", VK_OEM_COMMA}, {"OEMCOMMA", VK_OEM_COMMA},
+        {"PERIOD", VK_OEM_PERIOD}, {"DOT", VK_OEM_PERIOD},  {"OEMPERIOD", VK_OEM_PERIOD},
+        {"SLASH", VK_OEM_2},       {"OEM2", VK_OEM_2},      {"SEMICOLON", VK_OEM_1}, {"OEM1", VK_OEM_1},
+        {"BACKSLASH", VK_OEM_5},   {"OEM5", VK_OEM_5},      {"LBRACKET", VK_OEM_4}, {"OEM4", VK_OEM_4},
+        {"RBRACKET", VK_OEM_6},    {"OEM6", VK_OEM_6},      {"QUOTE", VK_OEM_7}, {"APOSTROPHE", VK_OEM_7},
+        {"OEM7", VK_OEM_7},
     };
     for (const auto &item : kNamed)
     {
@@ -246,21 +302,110 @@ unsigned ParseVkJson(const nlohmann::json &value)
     return 0;
 }
 
-unsigned ParseToggleVk(const nlohmann::json &obj)
+bool IsModifierName(const std::string &key, unsigned &mods)
 {
-    if (obj.contains("toggleVk"))
+    if (key == "CTRL" || key == "CONTROL")
     {
-        const unsigned vk = ParseVkJson(obj["toggleVk"]);
-        if (vk != 0)
+        mods |= MOD_CONTROL;
+        return true;
+    }
+    if (key == "SHIFT")
+    {
+        mods |= MOD_SHIFT;
+        return true;
+    }
+    if (key == "ALT" || key == "MENU")
+    {
+        mods |= MOD_ALT;
+        return true;
+    }
+    return false;
+}
+
+void ParseHotkeyString(std::string_view text, unsigned &vk, unsigned &mods)
+{
+    vk = 0;
+    mods = 0;
+    std::string key_token;
+    std::size_t start = 0;
+    while (start <= text.size())
+    {
+        const std::size_t pos = text.find('+', start);
+        const std::string_view part =
+            pos == std::string_view::npos ? text.substr(start) : text.substr(start, pos - start);
+        std::size_t begin = 0;
+        std::size_t end = part.size();
+        while (begin < end && (part[begin] == ' ' || part[begin] == '\t'))
         {
-            return vk;
+            ++begin;
+        }
+        while (end > begin && (part[end - 1] == ' ' || part[end - 1] == '\t'))
+        {
+            --end;
+        }
+        if (begin < end)
+        {
+            const std::string normalized = NormalizedKey(part.substr(begin, end - begin));
+            if (!normalized.empty())
+            {
+                if (!IsModifierName(normalized, mods))
+                {
+                    if (!key_token.empty())
+                    {
+                        vk = 0;
+                        mods = 0;
+                        return;
+                    }
+                    key_token = normalized;
+                }
+            }
+        }
+        if (pos == std::string_view::npos)
+        {
+            break;
+        }
+        start = pos + 1;
+    }
+    vk = ParseVirtualKeyImpl(key_token);
+    mods &= kModMask;
+}
+
+void ParseToggleHotkey(const nlohmann::json &obj, unsigned &vk, unsigned &mods)
+{
+    vk = 0;
+    mods = 0;
+    bool have_mods_field = false;
+    if (obj.contains("toggleMods") && obj["toggleMods"].is_number_integer())
+    {
+        const int n = obj["toggleMods"].get<int>();
+        if (n >= 0)
+        {
+            mods = static_cast<unsigned>(n) & kModMask;
+            have_mods_field = true;
         }
     }
-    if (obj.contains("toggleKey"))
+    if (obj.contains("toggleVk"))
     {
-        return ParseVkJson(obj["toggleKey"]);
+        vk = ParseVkJson(obj["toggleVk"]);
     }
-    return 0;
+    if (obj.contains("toggleKey") && obj["toggleKey"].is_string())
+    {
+        unsigned key_vk = 0;
+        unsigned key_mods = 0;
+        ParseHotkeyString(obj["toggleKey"].get<std::string>(), key_vk, key_mods);
+        if (vk == 0)
+        {
+            vk = key_vk;
+        }
+        if (!have_mods_field)
+        {
+            mods = key_mods;
+        }
+    }
+    else if (vk == 0 && obj.contains("toggleKey"))
+    {
+        vk = ParseVkJson(obj["toggleKey"]);
+    }
 }
 
 struct WinHttpHandle
@@ -396,9 +541,10 @@ std::string StripHtml(std::string_view html)
     return out;
 }
 
-bool DiscoverPort(unsigned short &port, unsigned &toggle_vk)
+bool DiscoverPort(unsigned short &port, unsigned &toggle_vk, unsigned &toggle_mods)
 {
     toggle_vk = 0;
+    toggle_mods = 0;
     WaitNamedPipeW(kPipeName, kPipeWaitMs);
 
     HANDLE pipe = CreateFileW(kPipeName, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
@@ -477,19 +623,21 @@ bool DiscoverPort(unsigned short &port, unsigned &toggle_vk)
         return false;
     }
     port = static_cast<unsigned short>(value);
-    toggle_vk = ParseToggleVk(parsed);
+    ParseToggleHotkey(parsed, toggle_vk, toggle_mods);
     if (toggle_vk != 0)
     {
         advertised_toggle_vk_.store(toggle_vk, std::memory_order_release);
+        advertised_toggle_mods_.store(toggle_mods, std::memory_order_release);
     }
-    win32::DebugLog(L"hub: discovered port=%u toggle_vk=0x%02X", port, toggle_vk);
+    win32::DebugLog(L"hub: discovered port=%u toggle_vk=0x%02X toggle_mods=0x%02X", port, toggle_vk, toggle_mods);
     return true;
 }
 
 bool DiscoverPort(unsigned short &port)
 {
     unsigned toggle_vk = 0;
-    return DiscoverPort(port, toggle_vk);
+    unsigned toggle_mods = 0;
+    return DiscoverPort(port, toggle_vk, toggle_mods);
 }
 
 bool HttpRequest(unsigned short port, const wchar_t *method, const wchar_t *path, std::string_view body,
@@ -967,12 +1115,36 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
 bool hub::DiscoverClient(ClientInfo &out)
 {
     out = {};
-    return DiscoverPort(out.port, out.toggle_vk);
+    return DiscoverPort(out.port, out.toggle_vk, out.toggle_mods);
 }
 
 unsigned hub::AdvertisedToggleVk() noexcept
 {
     return advertised_toggle_vk_.load(std::memory_order_acquire);
+}
+
+unsigned hub::AdvertisedToggleMods() noexcept
+{
+    return advertised_toggle_mods_.load(std::memory_order_acquire);
+}
+
+std::string hub::FormatToggleShortcut(unsigned vk, unsigned mods)
+{
+    std::string out;
+    if ((mods & MOD_CONTROL) != 0)
+    {
+        out += "Ctrl+";
+    }
+    if ((mods & MOD_SHIFT) != 0)
+    {
+        out += "Shift+";
+    }
+    if ((mods & MOD_ALT) != 0)
+    {
+        out += "Alt+";
+    }
+    out += VirtualKeyName(vk);
+    return out;
 }
 
 std::string hub::VirtualKeyName(unsigned vk)
@@ -1041,6 +1213,26 @@ std::string hub::VirtualKeyName(unsigned vk)
         return "Numpad/";
     case VK_RETURN:
         return "Enter";
+    case VK_OEM_MINUS:
+        return "-";
+    case VK_OEM_PLUS:
+        return "=";
+    case VK_OEM_4:
+        return "[";
+    case VK_OEM_6:
+        return "]";
+    case VK_OEM_5:
+        return "\\";
+    case VK_OEM_1:
+        return ";";
+    case VK_OEM_7:
+        return "'";
+    case VK_OEM_COMMA:
+        return ",";
+    case VK_OEM_PERIOD:
+        return ".";
+    case VK_OEM_2:
+        return "/";
     default:
         break;
     }

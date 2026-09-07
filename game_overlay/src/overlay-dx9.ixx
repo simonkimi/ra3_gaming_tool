@@ -219,12 +219,15 @@ HRESULT APIENTRY HookEndScene(IDirect3DDevice9 *device)
         if (imgui_ready_)
         {
             const unsigned vk = hub::AdvertisedToggleVk();
+            const unsigned mods = hub::AdvertisedToggleMods();
             static unsigned applied_vk = 0;
-            if (vk != 0 && vk != applied_vk)
+            static unsigned applied_mods = 0;
+            if (vk != 0 && (vk != applied_vk || mods != applied_mods))
             {
-                win32::DebugLog(L"dx9: applying advertised toggle vk=0x%02X", vk);
-                overlay::input::SetToggleKey(vk);
+                win32::DebugLog(L"dx9: applying advertised toggle vk=0x%02X mods=0x%02X", vk, mods);
+                overlay::input::SetToggleKey(vk, mods);
                 applied_vk = vk;
+                applied_mods = mods;
             }
             ImGui_ImplDX9_NewFrame();
             ImGui_ImplWin32_NewFrame();
