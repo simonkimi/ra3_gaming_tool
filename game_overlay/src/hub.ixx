@@ -77,6 +77,9 @@ struct LookupResult
     float rating = 0.0f;
     std::string difficulty;
     std::string author_difficulty;
+    bool allow_rating = true;
+    bool allow_difficulty_vote = true;
+    bool allow_comments = true;
     std::vector<std::string> tags;
     std::vector<MapLocation> locations;
     ImagePixels image;
@@ -786,6 +789,9 @@ hub::LookupResult ParseLookupBody(const std::string &body)
         result.nick_name = info["user"].value("nickName", "");
     }
     result.player_count = info.value("playerCount", 0);
+    result.allow_rating = info.value("allowRating", true);
+    result.allow_difficulty_vote = info.value("allowDifficultyVote", true);
+    result.allow_comments = info.value("allowComments", true);
     if (info.contains("statistic") && info["statistic"].is_object())
     {
         const auto &stat = info["statistic"];
@@ -949,7 +955,7 @@ hub::LookupResult hub::LookupMap(std::string_view map_path)
     {
         CoUninitialize();
     }
-    if (result.status == LookupStatus::found)
+    if (result.status == LookupStatus::found && result.allow_comments)
     {
         LoadComments(port, result);
     }

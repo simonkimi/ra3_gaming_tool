@@ -349,6 +349,33 @@ const char *DifficultyLabel(std::string_view type)
     return nullptr;
 }
 
+bool IsPveMap(const std::vector<std::string> &tags)
+{
+    static constexpr std::string_view kPve[] = {"PVE", "进攻", "防守", "流线", "闯关", "战役"};
+    static constexpr std::string_view kPvp[] = {"PVP", "三国杀", "小块地"};
+    for (const auto &tag : tags)
+    {
+        for (const auto pve : kPve)
+        {
+            if (tag == pve)
+            {
+                return true;
+            }
+        }
+    }
+    for (const auto &tag : tags)
+    {
+        for (const auto pvp : kPvp)
+        {
+            if (tag == pvp)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 void FormatStarRating(float api_rating, char *out, std::size_t out_size)
 {
     const float stars = std::round(api_rating / 2.0f * 10.0f) / 10.0f;
@@ -736,21 +763,25 @@ void DrawDetailTabs()
         ImGui::EndChild();
         ImGui::EndTabItem();
     }
-    char comments_tab[48];
-    if (shown_result_.comments_status == hub::CommentsStatus::loaded)
+    if (shown_result_.allow_comments)
     {
-        std::snprintf(comments_tab, sizeof(comments_tab), "评论 (%zu)###comments", shown_result_.comments.size());
-    }
-    else
-    {
-        std::snprintf(comments_tab, sizeof(comments_tab), "评论###comments");
-    }
-    if (ImGui::BeginTabItem(comments_tab))
-    {
-        ImGui::BeginChild("tab_comments");
-        DrawComments();
-        ImGui::EndChild();
-        ImGui::EndTabItem();
+        char comments_tab[48];
+        if (shown_result_.comments_status == hub::CommentsStatus::loaded)
+        {
+            std::snprintf(comments_tab, sizeof(comments_tab), "评论 (%zu)###comments",
+                          shown_result_.comments.size());
+        }
+        else
+        {
+            std::snprintf(comments_tab, sizeof(comments_tab), "评论###comments");
+        }
+        if (ImGui::BeginTabItem(comments_tab))
+        {
+            ImGui::BeginChild("tab_comments");
+            DrawComments();
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
     }
     ImGui::EndTabBar();
 }
@@ -810,29 +841,38 @@ void DrawMapLookup()
     char players[32];
     std::snprintf(players, sizeof(players), "%d 人", shown_result_.player_count);
     DrawMetaLine("人数", players);
-    if (shown_result_.has_rating)
+    if (shown_result_.allow_rating)
     {
-        char rating[32];
-        FormatStarRating(shown_result_.rating, rating, sizeof(rating));
-        DrawMetaLine("评分", rating);
+        if (shown_result_.has_rating)
+        {
+            char rating[32];
+            FormatStarRating(shown_result_.rating, rating, sizeof(rating));
+            DrawMetaLine("评分", rating);
+        }
+        else
+        {
+            DrawMetaLine("评分", "评分不足");
+        }
     }
-    else
+    if (shown_result_.allow_difficulty_vote && IsPveMap(shown_result_.tags))
     {
-        DrawMetaLine("评分", "评分不足");
+        const char *difficulty = DifficultyLabel(shown_result_.difficulty);
+        DrawMetaLine("难度", difficulty != nullptr ? difficulty : "票数不足");
     }
-    const char *difficulty = DifficultyLabel(shown_result_.difficulty);
-    DrawMetaLine("难度", difficulty != nullptr ? difficulty : "票数不足");
     ImGui::Spacing();
     DrawChips(shown_result_.tags);
-    if (const char *author_diff = DifficultyLabel(shown_result_.author_difficulty); author_diff != nullptr)
+    if (IsPveMap(shown_result_.tags))
     {
-        char badge[48];
-        std::snprintf(badge, sizeof(badge), "难度 · %s", author_diff);
-        if (!shown_result_.tags.empty())
+        if (const char *author_diff = DifficultyLabel(shown_result_.author_difficulty); author_diff != nullptr)
         {
-            ImGui::SameLine();
+            char badge[48];
+            std::snprintf(badge, sizeof(badge), "难度 · %s", author_diff);
+            if (!shown_result_.tags.empty())
+            {
+                ImGui::SameLine();
+            }
+            DrawChip(badge);
         }
-        DrawChip(badge);
     }
     ImGui::EndGroup();
 
